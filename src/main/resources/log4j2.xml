@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="warn">
+    <Appenders>
+        <Console name="CONSOLE" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d %-5p [%t] %C{2} (%F:%L) - %m%n"/>
+        </Console>
+        <RollingFile name="EXCEPTION" filePattern="/tmp/document-handler-exception-%d{yyyy-MM-dd-HH}.log" fileName="/tmp/document-handler-exception.log">
+            <PatternLayout pattern="%d %-5p [%t] %C{2} (%F:%L) - %m%n"/>
+            <Policies>
+                <CronTriggeringPolicy schedule="0 0 * * * ?"/>
+                <SizeBasedTriggeringPolicy size="250 MB"/>
+            </Policies>
+            <DirectWriteRolloverStrategy maxFiles="7" />
+        </RollingFile>
+        <!--<RollingFile name="FILE" fileName="/var/log/vertx/es-query-matcher.log" filePattern="/var/log/vertx/es-query-matcher-%d{yyyy-MM-dd}.log">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+            <Policies>
+                <CronTriggeringPolicy schedule="0 0 * * * ?"/>
+                <SizeBasedTriggeringPolicy size="250 MB"/>
+            </Policies>
+            <DirectWriteRolloverStrategy maxFiles="7" />
+        </RollingFile>-->
+        <Async name="ASYNC">
+            <!--<AppenderRef ref="FILE"/>-->
+            <AppenderRef ref="CONSOLE"/>
+        </Async>
+        <Async name="ASYNCEXCEPTION">
+            <AppenderRef ref="EXCEPTION"/>
+        </Async>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="ASYNC"/>
+        </Root>
+<!--        <Logger name="ExceptionLogger" level="all" additivity="false">
+            <AppenderRef ref="ASYNCEXCEPTION"/>
+        </Logger>-->
+    </Loggers>
+</Configuration>
