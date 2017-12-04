@@ -17,6 +17,7 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.ext.web.handler.CorsHandler;
+import io.vertx.ext.web.handler.StaticHandler;
 import javafx.util.Pair;
 
 import java.io.File;
@@ -50,13 +51,14 @@ public class App extends AbstractVerticle {
 		postgreSQLClient = PostgreSQLClient.createShared(vertx, config().getJsonObject("postgres"));
 
 		Router router = Router.router(vertx);
-		router.route().handler(CorsHandler.create("http://localhost:4200")
+		/*router.route().handler(CorsHandler.create("http://localhost:4200")
 				.allowedMethod(HttpMethod.GET)
 				.allowedMethod(HttpMethod.POST)
 				.allowedMethod(HttpMethod.PUT)
 				.allowedMethod(HttpMethod.DELETE)
 				.allowedMethod(HttpMethod.OPTIONS)
-				.allowedHeader("Content-Type").allowCredentials(true));
+				.allowedHeader("Content-Type").allowCredentials(true));*/
+		router.route("/app*").handler(StaticHandler.create("client").setWebRoot("html/dist"));
 		// Enable multipart form data parsing
 		router.route().handler(BodyHandler.create().setUploadsDirectory("uploads"));
 		// handle the form
@@ -82,7 +84,6 @@ public class App extends AbstractVerticle {
 				});
 			}
 
-			ctx.response().end();
 		});		// handle the form
 		router.post("/upload/cheminement").handler(ctx -> {
 			ctx.response().putHeader("Content-Type", "text/plain");
