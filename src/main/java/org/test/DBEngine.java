@@ -219,11 +219,11 @@ public class DBEngine {
 			tPtech.setPt_prop("OR900000000000");
 			tPtech.setPt_gest("OR900000000000");
 			if (noeuds.size() > 0) {
-				if (noeuds.getJsonObject(noeuds.size() - 2).getString("nd_type").equals("ST")) {
+				if (noeuds.getJsonObject(noeuds.size() - 1).getString("nd_type").equals("ST")) {
 					tPtech.setPt_proptyp("OCC");
 					//on corrige le tnoeud precedent si le tpetch en cours est un site tech
 				} else if (tnoeud.getNd_type().equals("ST")) {
-					pts.getJsonObject(pts.size() - 2).put("pt_proptyp", "OCC");
+					pts.getJsonObject(pts.size() - 1).put("pt_proptyp", "OCC");
 				}
 			} else {
 				tPtech.setPt_proptyp("LOC");
@@ -236,7 +236,7 @@ public class DBEngine {
 			tPtech.setPt_typephy("C");
 		}
 		String BPE = (String) noeud.getFeature().getProperty("BPE").getValue();
-		if (BPE != null || !BPE.isEmpty()) {
+		if (BPE != null && !BPE.isEmpty()) {
 			tPtech.setPt_typelog("R");
 			tPtech.setPt_a_passa("1");
 		} else {
