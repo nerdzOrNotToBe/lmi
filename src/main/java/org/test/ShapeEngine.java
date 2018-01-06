@@ -109,7 +109,7 @@ public class ShapeEngine implements Serializable {
 		GeometryAttribute geom = currentNoeud.getFeature().getDefaultGeometryProperty();
 		Geometry geomValue = (Geometry) geom.getValue();
 		for (Map.Entry<Geometry, Cheminement> geometryCheminenementEntry : cheminenementMap.entrySet()) {
-			if (geomValue.touches(geometryCheminenementEntry.getKey()) && !containHimSelf(geomValue, geometryCheminenementEntry.getValue())) {
+			if (geomValue.touches(geometryCheminenementEntry.getKey()) && !containHimSelf(geomValue, geometryCheminenementEntry.getValue()) && notfull(geometryCheminenementEntry.getValue())) {
 				if (firstNoeud) {
 					geometryCheminenementEntry.getValue().setNoeud1(noeudMap.get(geomValue));
 					Noeud nextNoeud = searchNextNoeud(noeudMap.get(geomValue), geometryCheminenementEntry.getValue());
@@ -132,7 +132,7 @@ public class ShapeEngine implements Serializable {
 
 	private void associateCheminementCheminement(Cheminement cheminement) {
 		for (Map.Entry<Geometry, Cheminement> current : cheminenementMap.entrySet()) {
-			if (current.getKey().intersects((Geometry) cheminement.getFeature().getDefaultGeometryProperty().getValue()) && !containHimSelf(current.getKey(), cheminement)) {
+			if (current.getKey().intersects((Geometry) cheminement.getFeature().getDefaultGeometryProperty().getValue()) && !containHimSelf(current.getKey(), cheminement) && notfull(current.getValue()) ) {
 				cheminement.setCheminenement2(current.getValue());
 				Noeud nextNoeud = searchNextNoeud(noeudMap.get(current.getKey()), cheminement);
 				if (nextNoeud != null) {
@@ -162,7 +162,7 @@ public class ShapeEngine implements Serializable {
 		for (SimpleFeature noeudFeature : noeudFeatures) {
 			GeometryAttribute geom = noeudFeature.getDefaultGeometryProperty();
 			Geometry geomValue = (Geometry) geom.getValue();
-			if (geomValue.intersects((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()) && !containHimSelf(geomValue, currentCheminements)) {
+			if (geomValue.intersects((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()) && !containHimSelf(geomValue, currentCheminements) ) {
 				return noeudMap.get(geomValue);
 			}
 
@@ -172,11 +172,29 @@ public class ShapeEngine implements Serializable {
 
 	private Cheminement searchNextCheminement(Noeud noeud, Cheminement currentCheminements) {
 		for (Map.Entry<Geometry, Cheminement> current : cheminenementMap.entrySet()) {
-			if (current.getKey().intersects((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()) && !containHimSelf(current.getKey(), currentCheminements)) {
+			if (current.getKey().intersects((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()) && !containHimSelf(current.getKey(), currentCheminements) && notfull(current.getValue())) {
 				return current.getValue();
 			}
 		}
 		return null;
+	}
+
+	private boolean notfull(Cheminement c) {
+		int allreadySet= 0;
+		if(c.getCheminenement1() != null){
+			allreadySet++;
+		}
+		if (c.getCheminenement2() != null){
+			allreadySet++;
+		}
+		if (c.getNoeud1() != null){
+			allreadySet++;
+		}
+		if (c.getNoeud2() != null){
+			allreadySet++;
+		}
+
+		return allreadySet<2;
 	}
 
 
@@ -251,49 +269,6 @@ public class ShapeEngine implements Serializable {
 		return gps;
 	}
 
-	public JsonArray getNoeuds(){
-		JsonArray array = new JsonArray();
-		for (Noeud noeud : noeudMap.values()) {
-			TNoeud tNoeud = new TNoeud();
-			tNoeud.setNd_code(noeud.getFeature().getID());
-			WKTWriter wktWriter = new WKTWriter();
-			tNoeud.setGeom( wktWriter.write((Geometry) noeud.getFeature().getDefaultGeometry()));
-			array.add(new JsonObject(Json.encode(tNoeud)));
-		}
-		return array;
-	}
-
-	public JsonArray getCheminements(){
-		JsonArray array = new JsonArray();
-		for (Cheminement cheminement : cheminenementMap.values()) {
-			TCheminement tCheminement = new TCheminement();
-			tCheminement.setCm_code(cheminement.getFeature().getID());
-			if(cheminement.getNoeud1() != null) {
-				tCheminement.setCm_ndcode1( cheminement.getNoeud1().getFeature().getID());
-			}else {
-				tCheminement.setCm_ndcode1( "");
-			}
-			if(cheminement.getNoeud2() != null) {
-				tCheminement.setCm_ndcode2(cheminement.getNoeud2().getFeature().getID());
-			}else {
-				tCheminement.setCm_ndcode2( "");
-			}
-			if(cheminement.getCheminenement1() != null) {
-				tCheminement.setCm_cm1(cheminement.getCheminenement1().getFeature().getID());
-			}else {
-				tCheminement.setCm_cm1("");
-			}
-			if(cheminement.getCheminenement2() != null) {
-				tCheminement.setCm_cm2(cheminement.getCheminenement2().getFeature().getID());
-			}else {
-				tCheminement.setCm_cm2("");
-			}
-			WKTWriter wktWriter = new WKTWriter();
-			tCheminement.setGeom( wktWriter.write((Geometry) cheminement.getFeature().getDefaultGeometry()));
-			array.add(new JsonObject(Json.encode(tCheminement)));
-		}
-		return array;
-	}
 
 	public List<Object> getFinalList() {
 		List<Object> objects = new ArrayList<>();
@@ -325,26 +300,6 @@ public class ShapeEngine implements Serializable {
 
 
 		}
-		// if need complete
-/*		for (int i = 0; i < objects.size(); i++) {
-			Object o = objects.get(i);
-			if(o instanceof Noeud){
-				previousNoeud = (Noeud) o;
-			}else {
-				Cheminement current = (Cheminement) o;
-				if(current.getNoeud1() == null && previousNoeud != null){
-					current.setNoeud1(previousNoeud);
-					previousNoeud = null;
-				}
-				if(current.getCheminenement1() == null && previousCheminement != null){
-					current.setCheminenement1(previousCheminement);
-				}
-				findNextNoeudAndCheminement(current, i+1, objects);
-				previousCheminement = (Cheminement) o;
-			}
-
-
-		}*/
 		return  objects;
 	}
 
@@ -369,30 +324,6 @@ public class ShapeEngine implements Serializable {
 				}
 			}
 			if(current.getCheminenement2() != null){
-				return;
-			}
-		}
-	}
-
-	private void findNextNoeudAndCheminementComplete(Cheminement current, int i,List<Object> objects) {
-		for (int j = i; j < objects.size(); j++) {
-			Object o = objects.get(j);
-			if(o instanceof Noeud){
-				if(current.getNoeud2() == null ){
-					current.setNoeud2((Noeud) o);
-				}
-			}else {
-				if(current.getCheminenement2() == null &&  current.getNoeud2() != null && ((Cheminement) o).getNoeud1() != null) {
-					Object o2 = objects.get(i-2);
-					if (o2 instanceof Noeud && ((Cheminement) o).getNoeud1().getFeature().equals(((Noeud) o2).getFeature())) {
-						return;
-					}
-				}
-				if(current.getCheminenement2() == null){
-					current.setCheminenement2((Cheminement) o);
-				}
-			}
-			if(current.getCheminenement2() != null && current.getNoeud2() != null){
 				return;
 			}
 		}
