@@ -109,7 +109,8 @@ public class ShapeEngine implements Serializable {
 		GeometryAttribute geom = currentNoeud.getFeature().getDefaultGeometryProperty();
 		Geometry geomValue = (Geometry) geom.getValue();
 		for (Map.Entry<Geometry, Cheminement> geometryCheminenementEntry : cheminenementMap.entrySet()) {
-			if (geomValue.touches(geometryCheminenementEntry.getKey()) && !containHimSelf(geomValue, geometryCheminenementEntry.getValue()) && notfull(geometryCheminenementEntry.getValue())) {
+			if (geomValue.distance(geometryCheminenementEntry.getKey()) <0.5 && !containHimSelf(geomValue, geometryCheminenementEntry.getValue()) && notfull(geometryCheminenementEntry.getValue())) {
+				System.out.println(geomValue.distance(geometryCheminenementEntry.getKey()));
 				if (firstNoeud) {
 					geometryCheminenementEntry.getValue().setNoeud1(noeudMap.get(geomValue));
 					Noeud nextNoeud = searchNextNoeud(noeudMap.get(geomValue), geometryCheminenementEntry.getValue());
@@ -132,7 +133,8 @@ public class ShapeEngine implements Serializable {
 
 	private void associateCheminementCheminement(Cheminement cheminement) {
 		for (Map.Entry<Geometry, Cheminement> current : cheminenementMap.entrySet()) {
-			if (current.getKey().intersects((Geometry) cheminement.getFeature().getDefaultGeometryProperty().getValue()) && !containHimSelf(current.getKey(), cheminement) && notfull(current.getValue()) ) {
+			if (current.getKey().distance((Geometry) cheminement.getFeature().getDefaultGeometryProperty().getValue()) < 0.5 && !containHimSelf(current.getKey(), cheminement) && notfull(current.getValue()) ) {
+				System.out.println(current.getKey().distance((Geometry) cheminement.getFeature().getDefaultGeometryProperty().getValue()));
 				cheminement.setCheminenement2(current.getValue());
 				Noeud nextNoeud = searchNextNoeud(noeudMap.get(current.getKey()), cheminement);
 				if (nextNoeud != null) {
@@ -162,7 +164,8 @@ public class ShapeEngine implements Serializable {
 		for (SimpleFeature noeudFeature : noeudFeatures) {
 			GeometryAttribute geom = noeudFeature.getDefaultGeometryProperty();
 			Geometry geomValue = (Geometry) geom.getValue();
-			if (geomValue.intersects((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()) && !containHimSelf(geomValue, currentCheminements) ) {
+			if (geomValue.distance((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()) < 0.5 && !containHimSelf(geomValue, currentCheminements) ) {
+				System.out.println(geomValue.distance((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()));
 				return noeudMap.get(geomValue);
 			}
 
@@ -172,7 +175,8 @@ public class ShapeEngine implements Serializable {
 
 	private Cheminement searchNextCheminement(Noeud noeud, Cheminement currentCheminements) {
 		for (Map.Entry<Geometry, Cheminement> current : cheminenementMap.entrySet()) {
-			if (current.getKey().intersects((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()) && !containHimSelf(current.getKey(), currentCheminements) && notfull(current.getValue())) {
+			if (current.getKey().distance((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()) < 0.5 && !containHimSelf(current.getKey(), currentCheminements) && notfull(current.getValue())) {
+				System.out.println(current.getKey().distance((Geometry) currentCheminements.getFeature().getDefaultGeometryProperty().getValue()));
 				return current.getValue();
 			}
 		}
