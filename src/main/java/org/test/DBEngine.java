@@ -224,6 +224,8 @@ public class DBEngine {
 					//on corrige le tnoeud precedent si le tpetch en cours est un site tech
 				} else if (tnoeud.getNd_type().equals("ST")) {
 					pts.getJsonObject(pts.size() - 1).put("pt_proptyp", "OCC");
+				} else {
+					tPtech.setPt_proptyp("LOC");
 				}
 			} else {
 				tPtech.setPt_proptyp("LOC");
