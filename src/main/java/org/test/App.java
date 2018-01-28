@@ -6,7 +6,6 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.Json;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -18,7 +17,6 @@ import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.ext.web.handler.CorsHandler;
 import io.vertx.ext.web.handler.StaticHandler;
-import javafx.util.Pair;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -26,12 +24,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -47,6 +42,8 @@ public class App extends AbstractVerticle {
 	SQLClient postgreSQLClient;
 	@Override
 	public void start() {
+
+		vertx.exceptionHandler(error -> logger.error(error));
 
 		postgreSQLClient = PostgreSQLClient.createShared(vertx, config().getJsonObject("postgres"));
 

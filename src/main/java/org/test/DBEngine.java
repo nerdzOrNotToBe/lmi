@@ -14,7 +14,6 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.sql.SQLClient;
-import org.geotools.factory.Hints;
 import org.geotools.geometry.jts.JTS;
 import org.geotools.geometry.jts.JTSFactoryFinder;
 import org.geotools.referencing.CRS;
@@ -25,6 +24,7 @@ import org.test.models.*;
 
 import java.text.DecimalFormat;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class DBEngine {
 	private Logger logger = LoggerFactory.getLogger(DBEngine.class);
@@ -37,6 +37,8 @@ public class DBEngine {
 	private Map<String, TSitetech> sitetechMap = new HashMap<>();
 	private static DecimalFormat df2 = new DecimalFormat(".##");
 	private JsonObject dataFill = new JsonObject();
+	private String currentNroSro = "";
+	private Boolean nroSroChanged = false;
 
 	public DBEngine(SQLClient sqlClient) {
 		this.sqlClient = sqlClient;
@@ -45,82 +47,93 @@ public class DBEngine {
 	public void firstStep(List<Object> objects, Handler<AsyncResult<JsonObject>> handler) {
 		Future<JsonObject> f = Future.future();
 		f.setHandler(handler);
-		init(objects, x -> {
-			if (x.succeeded()) {
-				for (Object object : objects) {
-					if (object instanceof Noeud) {
-						((Noeud) object).setCode(getAndIncreaseCode("noeud"));
-					} else {
-						((Cheminement) object).setCode(getAndIncreaseCode("cheminement"));
+	    AtomicInteger i = new AtomicInteger(0);
+
+		process(objects, f, i);
+
+
+	}
+
+	private void process(List<Object> objects, Future<JsonObject> f, AtomicInteger i) {
+		processNext(objects, i.get(), x -> {
+			if(x.succeeded()){
+				i.addAndGet(1);
+				if(i.get()<objects.size()) {
+					process(objects, f, i);
+				}else {
+					JsonArray noeuds = new JsonArray();
+					JsonArray cheminements = new JsonArray();
+					JsonArray pts = new JsonArray();
+					JsonArray siteTechs = new JsonArray();
+					JsonArray adresses = new JsonArray();
+					JsonArray ebps = new JsonArray();
+					for (Object object : objects) {
+						if (object instanceof Noeud) {
+							Noeud noeud = (Noeud) object;
+							TNoeud tNoeud = createNoeud(noeud);
+							TPtech pointTech = createPointTech(tNoeud, noeud, noeuds, pts);
+							pts.add(JsonObject.mapFrom(pointTech));
+							if (Arrays.asList("NRA", "SR", "PRM").contains(tNoeud.getNd_type())) {
+								TSitetech siteTech = createSiteTech(tNoeud, noeud, noeuds);
+								siteTechs.add(JsonObject.mapFrom(siteTech));
+								TAdresse tAdresse = createAdresse(tNoeud, noeud, noeuds);
+								adresses.add(JsonObject.mapFrom(tAdresse));
+								// to calculate t_cable and t_cableline
+								tNoeud.setPointBranchement(true);
+							}
+							TEbp tEbp = createEbp(tNoeud, noeud, noeuds, pointTech);
+							if (noeud.getFeature().getProperty("BPE").getValue() != null && !((String) noeud.getFeature().getProperty("BPE").getValue()).isEmpty()) {
+								ebps.add(JsonObject.mapFrom(tEbp));
+								// to calculate t_cable and t_cableline
+								tNoeud.setPointBranchement(true);
+							}
+							if (noeud.getFeature().getProperty("BPE1").getValue() != null && !((String) noeud.getFeature().getProperty("BPE1").getValue()).isEmpty()) {
+								TEbp tEbp1 = createEbp1(tNoeud, noeud, noeuds, pointTech);
+								ebps.add(JsonObject.mapFrom(tEbp1));
+								// to calculate t_cable and t_cableline
+								tNoeud.setPointBranchement(true);
+							}
+							noeuds.add(JsonObject.mapFrom(tNoeud));
+						} else {
+							TCheminement tCheminement = createCheminement((Cheminement) object);
+							cheminements.add(JsonObject.mapFrom(tCheminement));
+						}
 					}
+					dataFill.put("cheminements", cheminements);
+					dataFill.put("noeuds", noeuds);
+					dataFill.put("pointsTech", pts);
+					dataFill.put("sitesTech", siteTechs);
+					dataFill.put("adresses", adresses);
+					dataFill.put("ebps", ebps);
+					f.complete(dataFill);
 				}
-				JsonArray noeuds = new JsonArray();
-				JsonArray cheminements = new JsonArray();
-				JsonArray pts = new JsonArray();
-				JsonArray siteTechs = new JsonArray();
-				JsonArray adresses = new JsonArray();
-				JsonArray ebps = new JsonArray();
-				for (Object object : objects) {
-					if (object instanceof Noeud) {
-						Noeud noeud = (Noeud) object;
-						TNoeud tNoeud = createNoeud(noeud);
-						TPtech pointTech = createPointTech(tNoeud, noeud, noeuds, pts);
-						pts.add(JsonObject.mapFrom(pointTech));
-						if (Arrays.asList("NRA", "SR", "PRM").contains(tNoeud.getNd_type())) {
-							TSitetech siteTech = createSiteTech(tNoeud, noeud, noeuds);
-							siteTechs.add(JsonObject.mapFrom(siteTech));
-							TAdresse tAdresse = createAdresse(tNoeud, noeud, noeuds);
-							adresses.add(JsonObject.mapFrom(tAdresse));
-							// to calculate t_cable and t_cableline
-							tNoeud.setPointBranchement(true);
-						}
-						TEbp tEbp = createEbp(tNoeud, noeud, noeuds, pointTech);
-						if (noeud.getFeature().getProperty("BPE").getValue() != null && !((String) noeud.getFeature().getProperty("BPE").getValue()).isEmpty()) {
-							ebps.add(JsonObject.mapFrom(tEbp));
-							// to calculate t_cable and t_cableline
-							tNoeud.setPointBranchement(true);
-						}
-						if (noeud.getFeature().getProperty("BPE1").getValue() != null && !((String) noeud.getFeature().getProperty("BPE1").getValue()).isEmpty()) {
-							TEbp tEbp1 = createEbp1(tNoeud, noeud, noeuds, pointTech);
-							ebps.add(JsonObject.mapFrom(tEbp1));
-							// to calculate t_cable and t_cableline
-							tNoeud.setPointBranchement(true);
-						}
-						noeuds.add(JsonObject.mapFrom(tNoeud));
-					} else {
-						TCheminement tCheminement = createCheminement((Cheminement) object);
-						cheminements.add(JsonObject.mapFrom(tCheminement));
-					}
-				}
-				dataFill.put("cheminements", cheminements);
-				dataFill.put("noeuds", noeuds);
-				dataFill.put("pointsTech", pts);
-				dataFill.put("sitesTech", siteTechs);
-				dataFill.put("adresses", adresses);
-				dataFill.put("ebps", ebps);
-				f.complete(dataFill);
-			} else {
+			}else {
 				f.fail(x.cause());
 			}
 		});
+	}
 
-
-
-			/*	Cheminement cheminement = (Cheminement) object;
-				if (cheminement.getNoeud1() != null) {
-					Geometry geometry = (Geometry) cheminement.getNoeud1().getFeature().getDefaultGeometry();
-					String geomString = wktWriter.write(geometry);
-					queryznro = "SELECT * FROM public.znro WHERE  ST_Contains(geom,ST_GeomFromText('" + geomString + "')) ='t';";
-				} else {
-					Geometry geometryPrecedent = (Geometry) cheminement.getCheminenement1().getFeature().getDefaultGeometry();
-					Geometry geometryCurrent = (Geometry) cheminement.getFeature().getDefaultGeometry();
-					Geometry intersection = geometryPrecedent.intersection(geometryCurrent);
-					String geomString = wktWriter.write(intersection);
-					queryznro = "SELECT * FROM public.znro WHERE  ST_Contains(geom,ST_GeomFromText('" + geomString + "')) ='t';";
+	private void processNext(List<Object> objects, Integer i, Handler<AsyncResult<Void>> resultHandler) {
+		Future f = Future.future();
+		f.setHandler(resultHandler);
+		Object current = objects.get(i);
+		if (current instanceof Noeud) {
+			getCodeNoeud(current, x -> {
+				if(x.succeeded()){
+					if(nroSroChanged) {
+						((Noeud) current).setCode(codes.get("noeud"));
+					}else {
+						((Noeud) current).setCode(getAndIncreaseCode("noeud"));
+					}
+					f.complete();
 				}
-				System.out.println(queryznro);*/
-//		f.complete(true);
-
+			});
+		} else {
+			getCodeCheminement(x -> {
+				((Cheminement) current).setCode(codes.get("cheminement"));
+				f.complete();
+			});
+		}
 	}
 
 	private TEbp createEbp(TNoeud tNoeud, Noeud object, JsonArray noeuds, TPtech pointTech) {
@@ -267,11 +280,11 @@ public class DBEngine {
 		}
 		String calque = (String) cheminement.getFeature().getProperty("CALQUE").getValue();
 		switch (calque) {
-			case "RP_Fourreaux Ã  poser":
-				tCheminement.setCm_avct("C");
+			case "RE_Fourreaux existants":
+				tCheminement.setCm_avct("E");
 				break;
 			default:
-				tCheminement.setCm_avct("E");
+				tCheminement.setCm_avct("C");
 		}
 		if (tCheminement.getCm_avct().equals("E")) {
 			tCheminement.setInfra_type("4.7");
@@ -332,73 +345,53 @@ public class DBEngine {
 		Integer number = Integer.valueOf(codes.get(currentCode).substring(9));
 		number += 10;
 		codes.put(currentCode, root + number);
-		return value;
+		return  root + number;
 	}
 
-	/**
-	 * Prépare les premier code pour Noeud Cheminement Cable
-	 *
-	 * @param objects
-	 * @param handler
-	 */
-	private void init(List<Object> objects, Handler<AsyncResult<Boolean>> handler) {
-		Future initFuture = Future.future();
-		initFuture.setHandler(handler);
-		Future futureFirstCodeNoeud = Future.future();
-		getFirstCodeNoeud(objects, futureFirstCodeNoeud);
-		futureFirstCodeNoeud.compose(v -> {
-			Future futureFirstCodeCheminement = Future.future();
-			getFirstCodeCheminement(x -> {
-				if (x.succeeded()) {
-					codes.put("cheminement", x.result());
-					futureFirstCodeCheminement.complete();
-				} else {
-					futureFirstCodeCheminement.fail(x.cause());
-				}
-			});
-			return futureFirstCodeCheminement;
-		}).compose(v -> {
-			getFirstCodeCable(x -> {
-				if (x.succeeded()) {
-					codes.put("cable", x.result());
-					initFuture.complete();
-				} else {
-					initFuture.fail(x.cause());
-				}
-			});
-		}, initFuture);
-	}
-
-	private void getFirstCodeCable(Handler<AsyncResult<String>> resultHandler) {
+	private void getCodeCable(Handler<AsyncResult<String>> resultHandler) {
 		Future<String> future = Future.future();
 		future.setHandler(resultHandler);
-		String codeStart = codes.get("noeud").replace("ND", "CB");
-		codeStart = codeStart.substring(0, 9);
-		getNumero(codeStart, "data.t_cable", "cb_code", numeroResult -> {
-			if (numeroResult.succeeded()) {
-				future.complete(numeroResult.result());
-			} else {
-				future.fail(numeroResult.cause());
-			}
-		});
+		if(nroSroChanged) {
+
+			String codeStart = codes.get("noeud").replace("ND", "CB");
+			codeStart = codeStart.substring(0, 9);
+			getNumero(codeStart, "data.t_cable", "cb_code", numeroResult -> {
+				if (numeroResult.succeeded()) {
+					future.complete(numeroResult.result());
+				} else {
+					future.fail(numeroResult.cause());
+				}
+			});
+		}else {
+			future.complete(getAndIncreaseCode("cable"));
+		}
 	}
 
-	private void getFirstCodeCheminement(Handler<AsyncResult<String>> resultHandler) {
+	private void getCodeCheminement(Handler<AsyncResult<String>> resultHandler) {
 		Future<String> future = Future.future();
 		future.setHandler(resultHandler);
-		String codeStart = codes.get("noeud").replace("ND", "CM");
-		codeStart = codeStart.substring(0, 9);
-		getNumero(codeStart, "data.t_cheminement", "cm_code", numeroResult -> {
-			if (numeroResult.succeeded()) {
-				future.complete(numeroResult.result());
-			} else {
-				future.fail(numeroResult.cause());
-			}
-		});
+		if(nroSroChanged) {
+			nroSroChanged = false;
+			String codeStart = codes.get("noeud").replace("ND", "CM");
+			codeStart = codeStart.substring(0, 9);
+			getNumero(codeStart, "data.t_cheminement", "cm_code", numeroResult -> {
+				if (numeroResult.succeeded()) {
+					codes.put("cheminement", numeroResult.result());
+					logger.info( numeroResult.result());
+					future.complete(numeroResult.result());
+				} else {
+					future.fail(numeroResult.cause());
+				}
+			});
+		}else {
+			future.complete(getAndIncreaseCode("cheminement"));
+		}
 	}
 
-	private void getFirstCodeNoeud(List<Object> objects, Future futureFirstCodeNoeud) {
-		Noeud firstNoeud = (Noeud) objects.get(0);
+	private void getCodeNoeud(Object object, Handler<AsyncResult<Void>> resultHandler) {
+		Future f = Future.future();
+		f.setHandler(resultHandler);
+		Noeud firstNoeud = (Noeud) object;
 		WKTWriter wktWriter = new WKTWriter();
 		Geometry geometry = (Geometry) firstNoeud.getFeature().getDefaultGeometry();
 		String geomString = wktWriter.write(geometry);
@@ -406,20 +399,30 @@ public class DBEngine {
 			if (codeRno.succeeded()) {
 				getZsro(geomString, codeRno.result(), codeSro -> {
 					if (codeSro.succeeded()) {
-						getNumero(codeSro.result(), "data.t_noeud", "nd_code", codeFinal -> {
-							if (codeFinal.succeeded()) {
-								codes.put("noeud", codeFinal.result());
-								futureFirstCodeNoeud.complete();
-							}
-						});
+						if(currentNroSro.equals(codeSro.result())){
+							nroSroChanged =false;
+							f.complete();
+						}else {
+							currentNroSro = codeSro.result();
+							nroSroChanged =true;
+							getNumero(codeSro.result(), "data.t_noeud", "nd_code", codeFinal -> {
+								if (codeFinal.succeeded()) {
+									codes.put("noeud", codeFinal.result());
+									f.complete();
+								}else {
+									logger.error(codeFinal.cause());
+									f.fail(codeFinal.cause());
+								}
+							});
+						}
 					} else {
 						logger.error(codeSro.cause());
-						futureFirstCodeNoeud.fail(codeSro.cause());
+						f.fail(codeSro.cause());
 					}
 				});
 			} else {
 				logger.error(codeRno.cause());
-				futureFirstCodeNoeud.fail(codeRno.cause());
+				f.fail(codeRno.cause());
 			}
 		});
 	}
@@ -495,9 +498,14 @@ public class DBEngine {
 						List<JsonObject> rows = queryResult.result().getRows();
 						if (rows.size() > 0) {
 							JsonObject rowZsro = rows.get(0);
-							int nd_codeEnd = Integer.parseInt(rowZsro.getString(field).substring(9));
+							int nd_codeEnd = Integer.parseInt(rowZsro.getString(field).substring(10));
 							nd_codeEnd = nd_codeEnd + 100;
-							code[0] = code[0].concat(String.valueOf(nd_codeEnd));
+							String codeEnd = String.valueOf(nd_codeEnd);
+							if (nd_codeEnd < 1000){
+								codeEnd = "0" + codeEnd;
+							}
+							code[0] = code[0].concat(codeEnd);
+
 							connection.result().close();
 							future.complete(code[0]);
 						} else {
