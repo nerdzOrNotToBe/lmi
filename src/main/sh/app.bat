@@ -26,7 +26,7 @@ set APP_BASE_NAME=%~n0
 set VERTX_HOME=%DIRNAME%..
 
 @rem Find java.exe
-if defined JAVA_HOME goto findJavaFromJavaHome
+@rem if defined JAVA_HOME goto findJavaFromJavaHome
 
 set JAVA_EXE=java.exe
 set APPLICATION_JAR=lmIngenierie-1.0-SNAPSHOT-fat.jar

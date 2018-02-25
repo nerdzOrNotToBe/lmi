@@ -71,27 +71,28 @@ public class DBEngine {
 						if (object instanceof Noeud) {
 							Noeud noeud = (Noeud) object;
 							TNoeud tNoeud = createNoeud(noeud);
-							TPtech pointTech = createPointTech(tNoeud, noeud, noeuds, pts);
-							pts.add(JsonObject.mapFrom(pointTech));
-							if (Arrays.asList("NRA", "SR", "PRM").contains(tNoeud.getNd_type())) {
-								TSitetech siteTech = createSiteTech(tNoeud, noeud, noeuds);
+							if ("ST".equals(tNoeud.getNd_type())) {
+								TSitetech siteTech = createSiteTech(tNoeud, noeud, noeuds, pts);
 								siteTechs.add(JsonObject.mapFrom(siteTech));
 								TAdresse tAdresse = createAdresse(tNoeud, noeud, noeuds);
 								adresses.add(JsonObject.mapFrom(tAdresse));
 								// to calculate t_cable and t_cableline
 								tNoeud.setPointBranchement(true);
-							}
-							TEbp tEbp = createEbp(tNoeud, noeud, noeuds, pointTech);
-							if (noeud.getFeature().getProperty("BPE").getValue() != null && !((String) noeud.getFeature().getProperty("BPE").getValue()).isEmpty()) {
-								ebps.add(JsonObject.mapFrom(tEbp));
-								// to calculate t_cable and t_cableline
-								tNoeud.setPointBranchement(true);
-							}
-							if (noeud.getFeature().getProperty("BPE1").getValue() != null && !((String) noeud.getFeature().getProperty("BPE1").getValue()).isEmpty()) {
-								TEbp tEbp1 = createEbp1(tNoeud, noeud, noeuds, pointTech);
-								ebps.add(JsonObject.mapFrom(tEbp1));
-								// to calculate t_cable and t_cableline
-								tNoeud.setPointBranchement(true);
+							}else {
+								TPtech pointTech = createPointTech(tNoeud, noeud, noeuds, pts);
+								pts.add(JsonObject.mapFrom(pointTech));
+								TEbp tEbp = createEbp(tNoeud, noeud, noeuds, pointTech);
+								if (noeud.getFeature().getProperty("BPE").getValue() != null && !((String) noeud.getFeature().getProperty("BPE").getValue()).isEmpty()) {
+									ebps.add(JsonObject.mapFrom(tEbp));
+									// to calculate t_cable and t_cableline
+									tNoeud.setPointBranchement(true);
+								}
+								if (noeud.getFeature().getProperty("BPE1").getValue() != null && !((String) noeud.getFeature().getProperty("BPE1").getValue()).isEmpty()) {
+									TEbp tEbp1 = createEbp1(tNoeud, noeud, noeuds, pointTech);
+									ebps.add(JsonObject.mapFrom(tEbp1));
+									// to calculate t_cable and t_cableline
+									tNoeud.setPointBranchement(true);
+								}
 							}
 							noeuds.add(JsonObject.mapFrom(tNoeud));
 						} else {
@@ -187,7 +188,7 @@ public class DBEngine {
 		return tAdresse;
 	}
 
-	private TSitetech createSiteTech(TNoeud tNoeud, Noeud noeud, JsonArray noeuds) {
+	private TSitetech createSiteTech(TNoeud tNoeud, Noeud noeud, JsonArray noeuds, JsonArray pts) {
 		TSitetech tSitetech = new TSitetech();
 		tSitetech.setSt_code(tNoeud.getNd_code().replace("ND", "ST"));
 		tSitetech.setSt_nd_code(tNoeud.getNd_code());
@@ -216,6 +217,11 @@ public class DBEngine {
 		}
 		tSitetech.setSt_statut("PRO");
 		tSitetech.setSt_ad_code(tNoeud.getNd_code().replace("ND", "AD"));
+
+		//on corrige le tnoeud precedent pour mettre de l OCC
+		if(noeuds.size() > 0 && pts.size() > 0){
+			pts.getJsonObject(pts.size() -1 ).put("pt_proptyp", "OCC");
+		}
 		return tSitetech;
 	}
 
@@ -231,12 +237,10 @@ public class DBEngine {
 		} else {
 			tPtech.setPt_prop("OR900000000000");
 			tPtech.setPt_gest("OR900000000000");
-			if (noeuds.size() > 0) {
+			if (noeuds.size() == 1) {
+				// on est en OCC is le premier noeud est ST
 				if (noeuds.getJsonObject(noeuds.size() - 1).getString("nd_type").equals("ST")) {
 					tPtech.setPt_proptyp("OCC");
-					//on corrige le tnoeud precedent si le tpetch en cours est un site tech
-				} else if (tnoeud.getNd_type().equals("ST")) {
-					pts.getJsonObject(pts.size() - 1).put("pt_proptyp", "OCC");
 				} else {
 					tPtech.setPt_proptyp("LOC");
 				}

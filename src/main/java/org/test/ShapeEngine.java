@@ -66,8 +66,14 @@ public class ShapeEngine implements Serializable {
 				list.add(features.next());
 			}
 			Collections.sort(list, (o1, o2) -> {
-				Integer num1 = Integer.parseInt((String) o1.getProperty("NUMERO").getValue());
-				Integer num2 = Integer.parseInt((String) o2.getProperty("NUMERO").getValue());
+				Integer num1 = 200;
+				Integer num2 = 200;
+				if(o1.getProperty("NUMERO").getValue() != null && !((String)o1.getProperty("NUMERO").getValue()).isEmpty() ) {
+					num1 = Integer.parseInt((String) o1.getProperty("NUMERO").getValue());
+				}
+				if(o2.getProperty("NUMERO").getValue() != null && !((String)o2.getProperty("NUMERO").getValue()).isEmpty()) {
+					num2 = Integer.parseInt((String) o2.getProperty("NUMERO").getValue());
+				}
 				return num1.compareTo(num2);
 			});
 			noeudFeatures = list;
@@ -336,7 +342,9 @@ public class ShapeEngine implements Serializable {
 			for (Cheminement cheminement : cheminenementMap.values()) {
 				if(cheminement.getNoeud1() != null && cheminement.getNoeud1().getFeature().equals(((Cheminement)o).getNoeud2().getFeature())){
 					if(cheminement.getNoeud2() != null) {
-						nextPossibilities.add(new Pair<>(Integer.parseInt((String) cheminement.getNoeud2().getFeature().getProperty("NUMERO").getValue()), cheminement));
+						if(cheminement.getNoeud2().getFeature().getProperty("NUMERO").getValue() != null && !((String)cheminement.getNoeud2().getFeature().getProperty("NUMERO").getValue()).isEmpty() ) {
+							nextPossibilities.add(new Pair<>(Integer.parseInt((String) cheminement.getNoeud2().getFeature().getProperty("NUMERO").getValue()), cheminement));
+						}
 					}else {
 						nextPossibilities.add(new Pair<>(Integer.MAX_VALUE, cheminement));
 					}
