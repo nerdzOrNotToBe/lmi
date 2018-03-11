@@ -39,7 +39,7 @@ public class DBTests {
 	public void testDB(TestContext context) throws Exception {
 		Async async = context.async();
 		ShapeEngine shapeEngine = new ShapeEngine();
-		DBEngine dbEngine = new DBEngine(postgreSQLClient);
+		GenEngine dbEngine = new GenEngine(postgreSQLClient);
 		URL resourceNoeud = getClass().getResource("/NEOUD_V5.shp");
 		URL resourceCheminement = getClass().getResource("/CHEM_V5.shp");
 		Map<Geometry, Cheminement> cheminementMap = shapeEngine.process(resourceNoeud.getFile(),resourceCheminement.getFile(), 0);

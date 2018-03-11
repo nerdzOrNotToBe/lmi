@@ -55,7 +55,7 @@ public class TCheminement {
   private String cm_abdsrc;
   private String geom;
   private String fx_lmicode;
-  private String s_nominal;
+  private String s_nominale;
   private String infra_type;
   private String infra_lib;
 
@@ -427,12 +427,12 @@ public class TCheminement {
     this.fx_lmicode = fx_lmicode;
   }
 
-  public String getS_nominal() {
-    return s_nominal;
+  public String getS_nominale() {
+    return s_nominale;
   }
 
-  public void setS_nominal(String s_nominal) {
-    this.s_nominal = s_nominal;
+  public void setS_nominale(String s_nominal) {
+    this.s_nominale = s_nominal;
   }
 
   public String getInfra_type() {

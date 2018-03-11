@@ -26,8 +26,8 @@ import java.text.DecimalFormat;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class DBEngine {
-	private Logger logger = LoggerFactory.getLogger(DBEngine.class);
+public class GenEngine {
+	private Logger logger = LoggerFactory.getLogger(GenEngine.class);
 	private SQLClient sqlClient;
 
 
@@ -40,7 +40,7 @@ public class DBEngine {
 	private String currentNroSro = "";
 	private Boolean nroSroChanged = false;
 
-	public DBEngine(SQLClient sqlClient) {
+	public GenEngine(SQLClient sqlClient) {
 		this.sqlClient = sqlClient;
 	}
 
@@ -297,7 +297,7 @@ public class DBEngine {
 		tCheminement.setCm_typelog("TR");
 		tCheminement.setCm_typ_imp("7");
 		tCheminement.setCm_nature("TEL");
-		tCheminement.setS_nominal("1");
+		tCheminement.setS_nominale("1");
 		WKTWriter wktWriter = new WKTWriter();
 		Geometry geometry = (Geometry) cheminement.getFeature().getDefaultGeometry();
 		Coordinate[] coordinates = geometry.getCoordinates();
@@ -553,7 +553,7 @@ public class DBEngine {
 				continue;
 			}
 
-			Integer nbConduites = 1;
+			Integer nbConduites = 2;
 			if (tCheminement.getCm_avct().equals("C") && !tCheminement.getCm_mod_pos().equals("TRA")) {
 				nbConduites = 3;
 			}
@@ -637,15 +637,23 @@ public class DBEngine {
 
 				readGeom(lineMerger, parser, tCheminement);
 				Collection mergedLineStrings = lineMerger.getMergedLineStrings();
-				LineString[] lineStrings = new LineString[mergedLineStrings.size()];
-				LineString[] objects = (LineString[]) mergedLineStrings.toArray(lineStrings);
-				MultiLineString multiLineString = geometryFactory.createMultiLineString(objects);
-
-				tCableline.setGeom(multiLineString.toText());
+				// attention hack when the line don't be only one we add others into the same
+				LineString line = (LineString) ((ArrayList) mergedLineStrings).get(0);
+				if(mergedLineStrings.size() > 1) {
+					LineString[] object = new  LineString[mergedLineStrings.size()];
+					LineString[] lineStrings = (LineString[]) mergedLineStrings.toArray(object);
+					List<Coordinate> coordinates = new ArrayList<>();
+					for (int j = 0; j < lineStrings.length; j++) {
+						coordinates.addAll(Arrays.asList(lineStrings[j].getCoordinates()));
+					}
+					Coordinate[] coordinatesArray = new Coordinate[coordinates.size()];
+					line = geometryFactory.createLineString( coordinates.toArray(coordinatesArray));
+				}
+				tCableline.setGeom(line.toText());
 				tCableline.setCl_code(tCable.getCb_code().replace("CB","CL"));
 				tCableline.setCl_cb_code(tCable.getCb_code());
 
-				Coordinate[] coordinates = multiLineString.getCoordinates();
+				Coordinate[] coordinates = line.getCoordinates();
 				try {
 					CoordinateReferenceSystem crs2154 = CRS.decode("EPSG:2154");
 					double total = 0;
@@ -661,7 +669,7 @@ public class DBEngine {
 					logger.error("Cannot calculate Long of cheminement");
 				}
 				cablelines.add(JsonObject.mapFrom(tCableline));
-				logger.info("merged" + multiLineString);
+				logger.info("merged" + line);
 				lineMerger = new LineMerger();
 				tCable = new TCable();
 				//affecte noeud2 to next cable on noeud1

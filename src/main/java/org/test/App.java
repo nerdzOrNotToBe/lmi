@@ -120,6 +120,7 @@ public class App extends AbstractVerticle {
 
 		router.post("/shapes/firstStep").handler(this::firstStep);
 		router.post("/shapes/secondStep").handler(this::secondStep);
+		router.post("/shapes/save").handler(this::save);
 
 		vertx.createHttpServer().requestHandler(router::accept).listen(8080);
 		//URL resourceNoeud = getClass().getResource("/noeud.shp");
@@ -127,10 +128,22 @@ public class App extends AbstractVerticle {
 		//shapeEngine.process(resourceNoeud.getFile(),resourceCheminement.getFile(),3);
 	}
 
+	private void save(RoutingContext routingContext) {
+		JsonObject payload = routingContext.getBodyAsJson();
+		InsertEngine insertEngine = new InsertEngine(postgreSQLClient);
+		insertEngine.process(payload, x -> {
+			if(x.succeeded()){
+				routingContext.response().setStatusCode(200).end();
+			}else {
+				routingContext.fail(x.cause());
+			}
+		});
+	}
+
 	private void firstStep(RoutingContext routingContext) {
 		JsonObject payload = routingContext.getBodyAsJson();
 		ShapeEngine shapeEngine = new ShapeEngine();
-		DBEngine dbEngine = new DBEngine(postgreSQLClient);
+		GenEngine dbEngine = new GenEngine(postgreSQLClient);
 		String pathNoeud = "uploads"+File.separator+"noeud"+File.separator+payload.getString("noeud")+File.separator+payload.getString("noeud")+".shp";
 		String pathCheminement = "uploads"+File.separator+"cheminement"+File.separator+payload.getString("cheminement")+File.separator+payload.getString("cheminement")+".shp";
 		JsonObject shapeEngineConfig = new JsonObject();
@@ -168,7 +181,7 @@ public class App extends AbstractVerticle {
 	private void secondStep(RoutingContext routingContext) {
 		JsonObject payload = routingContext.getBodyAsJson();
 		JsonObject shapeEngineConfig = sessions.get(payload.getString("token"));
-		DBEngine dbEngine = new DBEngine(postgreSQLClient);
+		GenEngine dbEngine = new GenEngine(postgreSQLClient);
 		dbEngine.secondStep(payload.getJsonObject("data"), x -> {
 			if(x.succeeded()){
 				routingContext.response().putHeader(HttpHeaders.CONTENT_TYPE,HttpHeaderValues.APPLICATION_JSON);
