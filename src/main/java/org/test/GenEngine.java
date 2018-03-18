@@ -352,24 +352,24 @@ public class GenEngine {
 		return  root + number;
 	}
 
-	private void getCodeCable(Handler<AsyncResult<String>> resultHandler) {
-		Future<String> future = Future.future();
-		future.setHandler(resultHandler);
-		if(nroSroChanged) {
-
-			String codeStart = codes.get("noeud").replace("ND", "CB");
-			codeStart = codeStart.substring(0, 9);
-			getNumero(codeStart, "data.t_cable", "cb_code", numeroResult -> {
-				if (numeroResult.succeeded()) {
-					future.complete(numeroResult.result());
-				} else {
-					future.fail(numeroResult.cause());
-				}
-			});
-		}else {
-			future.complete(getAndIncreaseCode("cable"));
-		}
-	}
+//	private void getCodeCable(Handler<AsyncResult<String>> resultHandler) {
+//		Future<String> future = Future.future();
+//		future.setHandler(resultHandler);
+//		if(nroSroChanged) {
+//
+//			String codeStart = codes.get("noeud").replace("ND", "CB");
+//			codeStart = codeStart.substring(0, 9);
+//			getNumero(codeStart, "data.t_cable", "cb_code", numeroResult -> {
+//				if (numeroResult.succeeded()) {
+//					future.complete(numeroResult.result());
+//				} else {
+//					future.fail(numeroResult.cause());
+//				}
+//			});
+//		}else {
+//			future.complete(getAndIncreaseCode("cable"));
+//		}
+//	}
 
 	private void getCodeCheminement(Handler<AsyncResult<String>> resultHandler) {
 		Future<String> future = Future.future();
@@ -378,15 +378,10 @@ public class GenEngine {
 			nroSroChanged = false;
 			String codeStart = codes.get("noeud").replace("ND", "CM");
 			codeStart = codeStart.substring(0, 9);
-			getNumero(codeStart, "data.t_cheminement", "cm_code", numeroResult -> {
-				if (numeroResult.succeeded()) {
-					codes.put("cheminement", numeroResult.result());
-					logger.info( numeroResult.result());
-					future.complete(numeroResult.result());
-				} else {
-					future.fail(numeroResult.cause());
-				}
-			});
+			String table = "data.t_cheminement";
+			String field = "cm_code";
+			String codeKey = "cheminement";
+			nextCode(future, codeStart, table, field, codeKey);
 		}else {
 			future.complete(getAndIncreaseCode("cheminement"));
 		}
@@ -409,15 +404,10 @@ public class GenEngine {
 						}else {
 							currentNroSro = codeSro.result();
 							nroSroChanged =true;
-							getNumero(codeSro.result(), "data.t_noeud", "nd_code", codeFinal -> {
-								if (codeFinal.succeeded()) {
-									codes.put("noeud", codeFinal.result());
-									f.complete();
-								}else {
-									logger.error(codeFinal.cause());
-									f.fail(codeFinal.cause());
-								}
-							});
+							String table = "data.t_noeud";
+							String field = "nd_code";
+							String codeKey = "noeud";
+							nextCode(f, currentNroSro, table, field, codeKey);
 						}
 					} else {
 						logger.error(codeSro.cause());
@@ -427,6 +417,47 @@ public class GenEngine {
 			} else {
 				logger.error(codeRno.cause());
 				f.fail(codeRno.cause());
+			}
+		});
+	}
+
+	private void nextCode(Future f, String codeSro, String table, String field, String codeKey) {
+		if(codes.containsKey(codeKey)){
+			Integer num = Integer.parseInt(codes.get(codeKey).substring(9)) + 10;
+			String code = codeSro + num;
+			String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code + "%' ORDER BY " + field + " DESC";
+			this.sqlClient.getConnection(connection -> {
+				if (connection.succeeded()) {
+					connection.result().query(query, queryResult -> {
+						if(queryResult.succeeded()){
+							if(queryResult.result().getRows().size() > 0){
+								getAndPutNumero(f, codeSro, table, field, codeKey);
+							}else {
+								codes.put(codeKey, code);
+								f.complete();
+							}
+						}else {
+							f.fail(queryResult.cause());
+						}
+						connection.result().close();
+					});
+				}else {
+					f.fail(connection.cause());
+				}
+			});
+		}else {
+			getAndPutNumero(f, codeSro, table, field, codeKey);
+		}
+	}
+
+	private void getAndPutNumero(Future f, String codeSro, String table, String field, String codeKey) {
+		getNumero(codeSro, table, field, codeFinal -> {
+			if (codeFinal.succeeded()) {
+				codes.put(codeKey, codeFinal.result());
+				f.complete();
+			} else {
+				logger.error(codeFinal.cause());
+				f.fail(codeFinal.cause());
 			}
 		});
 	}
@@ -493,7 +524,6 @@ public class GenEngine {
 		final String[] code = {codeStart + "7"};
 		Future<String> future = Future.future();
 		future.setHandler(resultHandler);
-		//TODO remove ND83180117
 		String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code[0] + "%' ORDER BY " + field + " DESC";
 		this.sqlClient.getConnection(connection -> {
 			if (connection.succeeded()) {
@@ -598,14 +628,11 @@ public class GenEngine {
 			if (tCheminement.getCm_code() == null) {
 				continue;
 			}
-
+			currentCodeCable = tCheminement.getCm_code().replace("CM", "CB");
 			if (currentCodeCable == null) {
-				currentCodeCable = tCheminement.getCm_code().replace("CM", "CB");
 				tCable.setCb_code(currentCodeCable);
 				tCabCond.setCc_cb_code(currentCodeCable);
 			}else if(tCable.getCb_code() == null) {
-				Integer numero = Integer.valueOf(currentCodeCable.substring(9)) + 10;
-				currentCodeCable = currentCodeCable.substring(0, 9) + numero;
 				tCable.setCb_code(currentCodeCable);
 				tCabCond.setCc_cb_code(currentCodeCable);
 				//we make the return from satelite
@@ -625,7 +652,9 @@ public class GenEngine {
 				readGeom(lineMerger, parser, tCheminement);
 			}
 			if (tCheminement.getCm_ndcode2() != null && tNoeudMap.get(tCheminement.getCm_ndcode2()).isPointBranchement()) {
-
+				if(cables.size() == 0){
+					tCable.setCb_nd1(tNoeudMap.get(tCheminement.getCm_ndcode1()).getNd_code());
+				}
 				tCable.setCb_nd2(tNoeudMap.get(tCheminement.getCm_ndcode2()).getNd_code());
 				tCable.setCb_prop("OR900000000002");
 				tCable.setCb_gest("OR900000000014");
