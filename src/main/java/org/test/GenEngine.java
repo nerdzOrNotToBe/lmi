@@ -27,11 +27,10 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class GenEngine {
-	private Logger logger = LoggerFactory.getLogger(GenEngine.class);
-	private SQLClient sqlClient;
+	private static Logger logger = LoggerFactory.getLogger(GenEngine.class);
 
 
-	private Map<String, String> codes = new HashMap<>();
+	private static Map<String, String> codes = new HashMap<>();
 	private Map<String, TNoeud> tNoeudMap = new HashMap<>();
 	private Map<String, TPtech> tPtMap = new HashMap<>();
 	private Map<String, TSitetech> sitetechMap = new HashMap<>();
@@ -40,14 +39,13 @@ public class GenEngine {
 	private String currentNroSro = "";
 	private Boolean nroSroChanged = false;
 
-	public GenEngine(SQLClient sqlClient) {
-		this.sqlClient = sqlClient;
-	}
+	public GenEngine() {}
 
 	public void firstStep(List<Object> objects, Handler<AsyncResult<JsonObject>> handler) {
 		Future<JsonObject> f = Future.future();
 		f.setHandler(handler);
 	    AtomicInteger i = new AtomicInteger(0);
+		codes = new HashMap<>();
 
 		process(objects, f, i);
 
@@ -343,7 +341,7 @@ public class GenEngine {
 		return tNoeud;
 	}
 
-	private String getAndIncreaseCode(String currentCode) {
+	public static String getAndIncreaseCode(String currentCode) {
 		String value = String.valueOf(codes.get(currentCode));
 		String root = codes.get(currentCode).substring(0, 9);
 		Integer number = Integer.valueOf(codes.get(currentCode).substring(9));
@@ -421,12 +419,12 @@ public class GenEngine {
 		});
 	}
 
-	private void nextCode(Future f, String codeSro, String table, String field, String codeKey) {
+	public static void nextCode(Future f, String codeSro, String table, String field, String codeKey) {
 		if(codes.containsKey(codeKey)){
 			Integer num = Integer.parseInt(codes.get(codeKey).substring(9)) + 10;
 			String code = codeSro + num;
 			String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code + "%' ORDER BY " + field + " DESC";
-			this.sqlClient.getConnection(connection -> {
+			App.postgreSQLClient.getConnection(connection -> {
 				if (connection.succeeded()) {
 					connection.result().query(query, queryResult -> {
 						if(queryResult.succeeded()){
@@ -434,7 +432,7 @@ public class GenEngine {
 								getAndPutNumero(f, codeSro, table, field, codeKey);
 							}else {
 								codes.put(codeKey, code);
-								f.complete();
+								f.complete(code);
 							}
 						}else {
 							f.fail(queryResult.cause());
@@ -450,11 +448,11 @@ public class GenEngine {
 		}
 	}
 
-	private void getAndPutNumero(Future f, String codeSro, String table, String field, String codeKey) {
+	public static void getAndPutNumero(Future f, String codeSro, String table, String field, String codeKey) {
 		getNumero(codeSro, table, field, codeFinal -> {
 			if (codeFinal.succeeded()) {
 				codes.put(codeKey, codeFinal.result());
-				f.complete();
+				f.complete(codeFinal.result());
 			} else {
 				logger.error(codeFinal.cause());
 				f.fail(codeFinal.cause());
@@ -466,7 +464,7 @@ public class GenEngine {
 		String codeStart = "ND";
 		Future<String> future = Future.future();
 		future.setHandler(resultHandler);
-		this.sqlClient.getConnection(connection -> {
+		App.postgreSQLClient.getConnection(connection -> {
 			String queryznro = "SELECT * FROM public.znro WHERE  ST_Contains(geom,ST_GeomFromText('" + geomString + "',2154)) ='t';";
 			connection.result().query(queryznro, znroResult -> {
 				if (znroResult.succeeded()) {
@@ -494,7 +492,7 @@ public class GenEngine {
 		Future<String> future = Future.future();
 		future.setHandler(resultHandler);
 		String queryzsro = "SELECT * FROM public.zsro WHERE  ST_Contains(geom,ST_GeomFromText('" + geomString + "',2154)) ='t';";
-		this.sqlClient.getConnection(connection -> {
+		App.postgreSQLClient.getConnection(connection -> {
 			if (connection.succeeded()) {
 				connection.result().query(queryzsro, zsroResult -> {
 					if (zsroResult.succeeded()) {
@@ -520,12 +518,12 @@ public class GenEngine {
 		});
 	}
 
-	private void getNumero(String codeStart, String table, String field, Handler<AsyncResult<String>> resultHandler) {
+	public static void getNumero(String codeStart, String table, String field, Handler<AsyncResult<String>> resultHandler) {
 		final String[] code = {codeStart + "7"};
 		Future<String> future = Future.future();
 		future.setHandler(resultHandler);
 		String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code[0] + "%' ORDER BY " + field + " DESC";
-		this.sqlClient.getConnection(connection -> {
+		App.postgreSQLClient.getConnection(connection -> {
 			if (connection.succeeded()) {
 				connection.result().query(query, queryResult -> {
 					if (queryResult.succeeded()) {
@@ -598,130 +596,21 @@ public class GenEngine {
 			}
 
 		}
-		JsonObject entries = createCable(data, conduites);
-		JsonObject result = new JsonObject();
-		result.put("conduites", conduites);
-		result.put("cond_chems", cond_chems);
-		result.put("cables", entries.getJsonArray("cables"));
-		result.put("cablelines",  entries.getJsonArray("cablelines"));
-		result.put("cabconds",  entries.getJsonArray("cabconds"));
-		future.complete(result);
+		CableGen cableGen = new CableGen(data);
+		Future<JsonObject> f = Future.future();
+		f.setHandler( x -> {
+			JsonObject result = new JsonObject();
+			result.put("conduites", conduites);
+			result.put("cond_chems", cond_chems);
+			result.put("cables", x.result().getJsonArray("cables"));
+			result.put("cablelines",  x.result().getJsonArray("cablelines"));
+			result.put("cabconds",  x.result().getJsonArray("cabconds"));
+			future.complete(result);
+		});
+		cableGen.process(0, f );
+
 	}
 
-	private JsonObject createCable(JsonObject data, JsonArray conduites) {
-		String currentCodeCable = null;
-		LineMerger lineMerger = new LineMerger();
-		GeometryFactory geometryFactory = JTSFactoryFinder.getGeometryFactory();
-		WKTReader parser = new WKTReader(geometryFactory);
-		TCable tCable = new TCable();
-		TCableline tCableline = new TCableline();
-		TCabCond tCabCond = new TCabCond();
-		JsonArray cables = new JsonArray();
-		JsonArray cablelines = new JsonArray();
-		JsonArray cabconds = new JsonArray();
-		JsonObject result = new JsonObject();
-		result.put("cables",cables);
-		result.put("cablelines",cablelines);
-		result.put("cabconds",cabconds);
-		for (int i = 0; i < data.getJsonArray("cheminements").size(); i++) {
-			TCheminement tCheminement = Json.decodeValue(Json.encode(data.getJsonArray("cheminements").getValue(i)), TCheminement.class);
-			if (tCheminement.getCm_code() == null) {
-				continue;
-			}
-			currentCodeCable = tCheminement.getCm_code().replace("CM", "CB");
-			if (currentCodeCable == null) {
-				tCable.setCb_code(currentCodeCable);
-				tCabCond.setCc_cb_code(currentCodeCable);
-			}else if(tCable.getCb_code() == null) {
-				tCable.setCb_code(currentCodeCable);
-				tCabCond.setCc_cb_code(currentCodeCable);
-				//we make the return from satelite
-				if(tCabCond.getCc_cd_code() != null){
-					cabconds.add(JsonObject.mapFrom(tCabCond));
-					tCabCond = new TCabCond();
-					tCabCond.setCc_cb_code(currentCodeCable);
-				}
-			}
-
-			tCabCond.setCc_cd_code(tCheminement.getCm_code().replace("CM", "CD"));
-			cabconds.add(JsonObject.mapFrom(tCabCond));
-			if (tCheminement.getCm_ndcode1() != null && tNoeudMap.get(tCheminement.getCm_ndcode1()).isPointBranchement()) {
-				readGeom(lineMerger, parser, tCheminement);
-				tCable.setCb_nd1(tNoeudMap.get(tCheminement.getCm_ndcode1()).getNd_code());
-			} else if (tCheminement.getCm_ndcode1() == null && tCheminement.getCm_ndcode2() == null) {
-				readGeom(lineMerger, parser, tCheminement);
-			}
-			if (tCheminement.getCm_ndcode2() != null && tNoeudMap.get(tCheminement.getCm_ndcode2()).isPointBranchement()) {
-				if(cables.size() == 0){
-					tCable.setCb_nd1(tNoeudMap.get(tCheminement.getCm_ndcode1()).getNd_code());
-				}
-				tCable.setCb_nd2(tNoeudMap.get(tCheminement.getCm_ndcode2()).getNd_code());
-				tCable.setCb_prop("OR900000000002");
-				tCable.setCb_gest("OR900000000014");
-				tCable.setCb_proptyp("CST");
-				tCable.setCb_statut("PRO");
-				tCable.setCb_tech("OPT");
-				tCable.setCb_typephy("C");
-				cables.add(JsonObject.mapFrom(tCable));
-
-				readGeom(lineMerger, parser, tCheminement);
-				Collection mergedLineStrings = lineMerger.getMergedLineStrings();
-				// attention hack when the line don't be only one we add others into the same
-				LineString line = (LineString) ((ArrayList) mergedLineStrings).get(0);
-				if(mergedLineStrings.size() > 1) {
-					LineString[] object = new  LineString[mergedLineStrings.size()];
-					LineString[] lineStrings = (LineString[]) mergedLineStrings.toArray(object);
-					List<Coordinate> coordinates = new ArrayList<>();
-					for (int j = 0; j < lineStrings.length; j++) {
-						coordinates.addAll(Arrays.asList(lineStrings[j].getCoordinates()));
-					}
-					Coordinate[] coordinatesArray = new Coordinate[coordinates.size()];
-					line = geometryFactory.createLineString( coordinates.toArray(coordinatesArray));
-				}
-				tCableline.setGeom(line.toText());
-				tCableline.setCl_code(tCable.getCb_code().replace("CB","CL"));
-				tCableline.setCl_cb_code(tCable.getCb_code());
-
-				Coordinate[] coordinates = line.getCoordinates();
-				try {
-					CoordinateReferenceSystem crs2154 = CRS.decode("EPSG:2154");
-					double total = 0;
-					for (int c = 0; c < coordinates.length - 1; c++) {
-						Coordinate c1 = coordinates[c];
-						Coordinate c2 = coordinates[c + 1];
-
-						total += JTS.orthodromicDistance(c1, c2, crs2154);
-					}
-					tCableline.setCl_long(String.valueOf(df2.format(total)));
-
-				} catch (FactoryException | TransformException e) {
-					logger.error("Cannot calculate Long of cheminement");
-				}
-				cablelines.add(JsonObject.mapFrom(tCableline));
-				logger.info("merged" + line);
-				lineMerger = new LineMerger();
-				tCable = new TCable();
-				//affecte noeud2 to next cable on noeud1
-				tCable.setCb_nd1(tNoeudMap.get(tCheminement.getCm_ndcode2()).getNd_code());
-				tCabCond = new TCabCond();
-				tCabCond.setCc_cd_code(tCheminement.getCm_code().replace("CM", "CD"));
-				tCableline = new TCableline();
-				//put second time too make cable go out from bpe
-				readGeom(lineMerger, parser, tCheminement);
-			}
-		}
-		return result;
-	}
-
-	private void readGeom(LineMerger lineMerger, WKTReader parser, TCheminement tCheminement) {
-		try {
-			MultiLineString lineString = (MultiLineString) parser.read(tCheminement.getGeom());
-			logger.info(lineString);
-			lineMerger.add(lineString);
-		} catch (ParseException e) {
-			logger.error("Error when we try to parse Geom to create cableline", e);
-		}
-	}
 
 	private TConduite createConduite(TCheminement tCheminement, int i) {
 		TConduite tConduite = new TConduite();

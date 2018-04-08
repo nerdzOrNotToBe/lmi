@@ -291,7 +291,6 @@ public class ShapeEngine implements Serializable {
 			}
 		}
 		findNextObject(objects.get(1), objects);
-		Noeud previousNoeud = null;
 		Cheminement previousCheminement = null;
 		for (int i = 0; i < objects.size(); i++) {
 			Object o = objects.get(i);

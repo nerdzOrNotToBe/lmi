@@ -39,7 +39,7 @@ public class App extends AbstractVerticle {
 
 	private ConcurrentMap<String, JsonObject> sessions = new ConcurrentHashMap<>();
 	
-	SQLClient postgreSQLClient;
+	public static SQLClient postgreSQLClient;
 	@Override
 	public void start() {
 
@@ -143,7 +143,7 @@ public class App extends AbstractVerticle {
 	private void firstStep(RoutingContext routingContext) {
 		JsonObject payload = routingContext.getBodyAsJson();
 		ShapeEngine shapeEngine = new ShapeEngine();
-		GenEngine dbEngine = new GenEngine(postgreSQLClient);
+		GenEngine dbEngine = new GenEngine();
 		String pathNoeud = "uploads"+File.separator+"noeud"+File.separator+payload.getString("noeud")+File.separator+payload.getString("noeud")+".shp";
 		String pathCheminement = "uploads"+File.separator+"cheminement"+File.separator+payload.getString("cheminement")+File.separator+payload.getString("cheminement")+".shp";
 		JsonObject shapeEngineConfig = new JsonObject();
@@ -181,7 +181,7 @@ public class App extends AbstractVerticle {
 	private void secondStep(RoutingContext routingContext) {
 		JsonObject payload = routingContext.getBodyAsJson();
 		JsonObject shapeEngineConfig = sessions.get(payload.getString("token"));
-		GenEngine dbEngine = new GenEngine(postgreSQLClient);
+		GenEngine dbEngine = new GenEngine();
 		dbEngine.secondStep(payload.getJsonObject("data"), x -> {
 			if(x.succeeded()){
 				routingContext.response().putHeader(HttpHeaders.CONTENT_TYPE,HttpHeaderValues.APPLICATION_JSON);

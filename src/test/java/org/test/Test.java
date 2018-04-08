@@ -1,14 +1,19 @@
 package org.test;
 
 import com.vividsolutions.jts.geom.Geometry;
+import io.vertx.core.Future;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.asyncsql.PostgreSQLClient;
 import org.junit.Assert;
 import org.test.models.Cheminement;
 
+import java.io.*;
+import java.net.URISyntaxException;
 import java.net.URL;
-import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class Test {
 
@@ -180,4 +185,5 @@ public class Test {
 		}
 		System.out.println("done");
 	}
+
 }

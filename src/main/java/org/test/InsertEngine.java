@@ -1,7 +1,6 @@
 package org.test;
 
 import io.vertx.core.AsyncResult;
-import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.json.JsonArray;
@@ -9,12 +8,10 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.sql.SQLClient;
-import io.vertx.ext.sql.SQLConnection;
 
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 
@@ -53,26 +50,26 @@ public class InsertEngine {
 						}
 						connectionResult.result().execute(multiQueries.toString(), execute -> {
 							if(execute.succeeded()){
-//							connectionResult.result().commit(commit -> {
-//								if(commit.succeeded()){
-//									future.complete();
-//
-//								}else {
-//									future.fail(commit.cause());
-//									logger.error("Commit failed",cf.cause());
-//								}
-//							});
-								connectionResult.result().rollback(rollback ->{
-									if(rollback.succeeded()){
+							connectionResult.result().commit(commit -> {
+								if(commit.succeeded()){
+									future.complete();
 
-										future.complete();
-										logger.error("Rollback done");
-									}else {
-										future.fail(rollback.cause());
-										logger.error("Rollback error", rollback.cause());
-									}
-									connectionResult.result().close();
-								});
+								}else {
+									future.fail(commit.cause());
+									logger.error("Commit failed",commit.cause());
+								}
+							});
+//								connectionResult.result().rollback(rollback ->{
+//									if(rollback.succeeded()){
+//
+//										future.complete();
+//										logger.error("Rollback done");
+//									}else {
+//										future.fail(rollback.cause());
+//										logger.error("Rollback error", rollback.cause());
+//									}
+//									connectionResult.result().close();
+//								});
 							}else {
 								connectionResult.result().rollback(rollback ->{
 									if(rollback.succeeded()){
@@ -111,8 +108,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("cc_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -127,8 +125,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("cl_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -143,8 +142,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("cb_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -159,8 +159,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("dm_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -175,8 +176,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("cd_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -191,8 +193,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("bp_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -207,8 +210,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("ad_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -223,8 +227,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("st_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -239,8 +244,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("pt_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -255,8 +261,9 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			/* creation date */
 			query.append("cm_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)) {
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
@@ -273,16 +280,21 @@ public class InsertEngine {
 			foundFieldsAndValues(n, values, query);
 			// creation date
 			query.append("nd_creadat").append(")");
-			fillValues(values, query);
-			queries.add(query.toString());
+			if(fillValues(values, query)){
+				queries.add(query.toString());
+			}
 		}
 		return queries;
 	}
 
 
-	private void fillValues(List<Object> values, StringBuilder query) {
+	private boolean fillValues(List<Object> values, StringBuilder query) {
 		query.append(" VALUES (");
+		boolean allNull = true;
 		for (Object value : values) {
+			if(value != null){
+				allNull = false;
+			}
 			if(value instanceof String){
 				if(((String) value).contains("POINT") ||  ((String) value).contains("LINESTRING")){
 					query.append("ST_SetSRID(")
@@ -304,6 +316,7 @@ public class InsertEngine {
 		}
 		query.append("current_timestamp )");
 		query.append(";");
+		return !allNull;
 	}
 
 	private void foundFieldsAndValues(JsonObject n, List<Object> values, StringBuilder query) throws ParseException {
