@@ -65,38 +65,47 @@ public class GenEngine {
 					JsonArray siteTechs = new JsonArray();
 					JsonArray adresses = new JsonArray();
 					JsonArray ebps = new JsonArray();
-					for (Object object : objects) {
-						if (object instanceof Noeud) {
-							Noeud noeud = (Noeud) object;
-							TNoeud tNoeud = createNoeud(noeud);
-							if ("ST".equals(tNoeud.getNd_type())) {
-								TSitetech siteTech = createSiteTech(tNoeud, noeud, noeuds, pts);
-								siteTechs.add(JsonObject.mapFrom(siteTech));
-								TAdresse tAdresse = createAdresse(tNoeud, noeud, noeuds);
-								adresses.add(JsonObject.mapFrom(tAdresse));
-								// to calculate t_cable and t_cableline
-								tNoeud.setPointBranchement(true);
-							}else {
-								TPtech pointTech = createPointTech(tNoeud, noeud, noeuds, pts);
-								pts.add(JsonObject.mapFrom(pointTech));
-								TEbp tEbp = createEbp(tNoeud, noeud, noeuds, pointTech);
-								if (noeud.getFeature().getProperty("BPE").getValue() != null && !((String) noeud.getFeature().getProperty("BPE").getValue()).isEmpty()) {
-									ebps.add(JsonObject.mapFrom(tEbp));
+					try {
+						for (Object object : objects) {
+							if (object instanceof Noeud) {
+								Noeud noeud = (Noeud) object;
+								TNoeud tNoeud = createNoeud(noeud);
+								if ("ST".equals(tNoeud.getNd_type())) {
+									TSitetech siteTech = createSiteTech(tNoeud, noeud, noeuds, pts);
+									siteTechs.add(JsonObject.mapFrom(siteTech));
+									TAdresse tAdresse = createAdresse(tNoeud, noeud, noeuds);
+									adresses.add(JsonObject.mapFrom(tAdresse));
 									// to calculate t_cable and t_cableline
 									tNoeud.setPointBranchement(true);
+								} else {
+									TPtech pointTech = createPointTech(tNoeud, noeud, noeuds, pts);
+									pts.add(JsonObject.mapFrom(pointTech));
+									TEbp tEbp = createEbp(tNoeud, noeud, noeuds, pointTech);
+									if (noeud.getFeature().getProperty("BPE") != null && noeud.getFeature().getProperty("BPE").getValue() != null && !((String) noeud.getFeature().getProperty("BPE").getValue()).isEmpty()) {
+										ebps.add(JsonObject.mapFrom(tEbp));
+										// to calculate t_cable and t_cableline
+										tNoeud.setPointBranchement(true);
+									}
+									if (noeud.getFeature().getProperty("BPE1") != null && noeud.getFeature().getProperty("BPE1").getValue() != null && !((String) noeud.getFeature().getProperty("BPE1").getValue()).isEmpty()) {
+										ebps.add(JsonObject.mapFrom(tEbp));
+										// to calculate t_cable and t_cableline
+										tNoeud.setPointBranchement(true);
+									}
+									if (noeud.getFeature().getProperty("BPE2") != null && noeud.getFeature().getProperty("BPE2").getValue() != null && !((String) noeud.getFeature().getProperty("BPE2").getValue()).isEmpty()) {
+										TEbp tEbp1 = createEbp1(tNoeud, noeud, noeuds, pointTech);
+										ebps.add(JsonObject.mapFrom(tEbp1));
+										// to calculate t_cable and t_cableline
+										tNoeud.setPointBranchement(true);
+									}
 								}
-								if (noeud.getFeature().getProperty("BPE1").getValue() != null && !((String) noeud.getFeature().getProperty("BPE1").getValue()).isEmpty()) {
-									TEbp tEbp1 = createEbp1(tNoeud, noeud, noeuds, pointTech);
-									ebps.add(JsonObject.mapFrom(tEbp1));
-									// to calculate t_cable and t_cableline
-									tNoeud.setPointBranchement(true);
-								}
+								noeuds.add(JsonObject.mapFrom(tNoeud));
+							} else {
+								TCheminement tCheminement = createCheminement((Cheminement) object);
+								cheminements.add(JsonObject.mapFrom(tCheminement));
 							}
-							noeuds.add(JsonObject.mapFrom(tNoeud));
-						} else {
-							TCheminement tCheminement = createCheminement((Cheminement) object);
-							cheminements.add(JsonObject.mapFrom(tCheminement));
 						}
+					}catch (Exception e){
+						logger.error(e);
 					}
 					dataFill.put("cheminements", cheminements);
 					dataFill.put("noeuds", noeuds);
