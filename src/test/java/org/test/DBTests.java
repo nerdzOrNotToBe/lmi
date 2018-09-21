@@ -1,16 +1,13 @@
 package org.test;
 
 import com.vividsolutions.jts.geom.Geometry;
-import io.vertx.core.Future;
-import io.vertx.core.Vertx;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.asyncsql.PostgreSQLClient;
-import io.vertx.ext.sql.SQLClient;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
-import org.junit.Assert;
+import io.vertx.reactivex.core.Vertx;
+import io.vertx.reactivex.ext.asyncsql.PostgreSQLClient;
+import io.vertx.reactivex.ext.sql.SQLClient;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -20,7 +17,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.List;
 import java.util.Map;
@@ -54,10 +50,10 @@ public class DBTests {
 		Map<Geometry, Cheminement> cheminementMap = shapeEngine.process(resourceNoeud.getFile(),resourceCheminement.getFile(), 0);
 		JsonObject entries = shapeEngine.transformToGpsCoordinnate();
 		List<Object> list = shapeEngine.getFinalList();
-		dbEngine.firstStep(list, x -> {
+		dbEngine.firstStep(list).subscribe( x -> {
 			System.out.println(entries.encodePrettily());
 			async.complete();
-		} );
+		}, error -> context.fail((Throwable) error) );
 	}
 
 	@Test
@@ -68,14 +64,6 @@ public class DBTests {
 		String result = reader.lines().collect(Collectors.joining("\n"));
 		JsonObject paylaod = new JsonObject(result);
 		CableGen cableGen = new CableGen(paylaod);
-		Future<JsonObject> future = Future.future();
-		future.setHandler(x -> {
-			if(x.succeeded()){
-				async.complete();
-			}else {
-				context.fail(x.cause());
-			}
-		});
-		cableGen.process(0,future);
+		cableGen.process(0).subscribe(x-> async.complete(), error -> context.fail(error));
 	}
 }

@@ -3,9 +3,7 @@ package org.test;
 import com.vividsolutions.jts.geom.*;
 import com.vividsolutions.jts.io.ParseException;
 import com.vividsolutions.jts.io.WKTReader;
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
+import io.reactivex.Single;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -62,7 +60,7 @@ public class CableGen {
 		parser = new WKTReader(geometryFactory);
 	}
 
-	public void process(int i ,  Future<JsonObject> f){
+	public Single<JsonObject> process(int i){
 		if(i == noeuds.size()){
 			int j = 0;
 			for (Object o : cables) {
@@ -73,22 +71,22 @@ public class CableGen {
 			result.put("cables",cables);
 			result.put("cablelines",cablelines);
 			result.put("cabconds",cabconds);
-			f.complete(result);
+			return Single.just(result);
 		}else {
 			TNoeud noeud = Json.decodeValue(this.noeuds.getJsonObject(i).encode(),TNoeud.class);
 			if (noeud.isPointBranchement()) {
 				if(i == 0) {
 					newCable();
-					setCodeCable(++i, f, noeud);
+					return setCodeCable(++i, noeud);
 				}else {
 					cable.setCb_nd2(noeud.getNd_code());
 					cables.add(JsonObject.mapFrom(cable));
 					System.out.println(i);
 					newCable();
-					setCodeCable(++i, f, noeud);
+					return setCodeCable(++i, noeud);
 				}
 			} else {
-				process(i + 1, f);
+				return process(i + 1);
 			}
 		}
 	}
@@ -230,21 +228,15 @@ public class CableGen {
 		cable.setCb_typephy("C");
 	}
 
-	private void setCodeCable(int i, Future<JsonObject> f, TNoeud noeud) {
-		getCodeCable(noeud, getCodeCable -> {
-			if (getCodeCable.succeeded()) {
-				cable.setCb_code(getCodeCable.result());
+	private Single<JsonObject> setCodeCable(int i, TNoeud noeud) {
+		return getCodeCable(noeud).flatMap(getCodeCable -> {
+				cable.setCb_code(getCodeCable);
 				cable.setCb_nd1(noeud.getNd_code());
-				process(i, f);
-			} else {
-				f.fail(getCodeCable.cause());
-			}
+				return process(i);
 		});
 	}
 
-	private void getCodeCable(TNoeud noeud, Handler<AsyncResult<String>> resultHandler) {
-		Future<String> future = Future.future();
-		future.setHandler(resultHandler);
+	private Single<String> getCodeCable(TNoeud noeud) {
 		String codeStart = noeud.getNd_code().replace("ND", "CB");
 		codeStart = codeStart.substring(0, 9);
 		if(currentCode == null || !currentCode.equalsIgnoreCase(codeStart)) {
@@ -252,9 +244,9 @@ public class CableGen {
 			String field = "cb_code";
 			String codeKey = "cable";
 			currentCode = codeStart;
-			GenEngine.nextCode(future, codeStart, table, field, codeKey);
+			return GenEngine.nextCode( codeStart, table, field, codeKey);
 		}else {
-			future.complete(GenEngine.getAndIncreaseCode("cable"));
+			return Single.just(GenEngine.getAndIncreaseCode("cable"));
 		}
 	}
 

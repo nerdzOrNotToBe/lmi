@@ -1,7 +1,8 @@
 package org.test;
 
 import io.netty.handler.codec.http.HttpHeaderValues;
-import io.vertx.core.AbstractVerticle;
+import io.reactivex.Observable;
+import io.reactivex.Single;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
@@ -9,14 +10,15 @@ import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-import io.vertx.ext.asyncsql.PostgreSQLClient;
-import io.vertx.ext.sql.SQLClient;
-import io.vertx.ext.web.FileUpload;
-import io.vertx.ext.web.Router;
-import io.vertx.ext.web.RoutingContext;
-import io.vertx.ext.web.handler.BodyHandler;
-import io.vertx.ext.web.handler.CorsHandler;
-import io.vertx.ext.web.handler.StaticHandler;
+import io.vertx.reactivex.ext.sql.SQLClient;
+import io.vertx.reactivex.ext.web.FileUpload;
+import io.vertx.reactivex.ext.web.Router;
+import io.vertx.reactivex.ext.web.RoutingContext;
+import io.vertx.reactivex.ext.web.handler.BodyHandler;
+import io.vertx.reactivex.ext.web.handler.CorsHandler;
+import io.vertx.reactivex.ext.web.handler.StaticHandler;
+import io.vertx.reactivex.core.AbstractVerticle;
+import io.vertx.reactivex.ext.asyncsql.PostgreSQLClient;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -150,58 +152,46 @@ public class App extends AbstractVerticle {
 		shapeEngineConfig.put("pathNoeud",pathNoeud);
 		shapeEngineConfig.put("pathCheminement",pathCheminement);
 		sessions.put(payload.getString("token"),shapeEngineConfig);
-		vertx.executeBlocking(future -> {
-			try {
-				shapeEngine.process(pathNoeud,pathCheminement, 0);
-				dbEngine.firstStep(shapeEngine.getFinalList(), x->{
-					future.complete(x.result());
-				});
-			} catch (Exception e) {
-				future.fail(e);
-			}
-		}, result -> {
-			if(result.succeeded()){
-				routingContext.response().putHeader(HttpHeaders.CONTENT_TYPE,HttpHeaderValues.APPLICATION_JSON);
-				JsonObject jsonResult = new JsonObject();
-				jsonResult.put("map", shapeEngine.transformToGpsCoordinnate());
-				jsonResult.put("noeuds", ((JsonObject)result.result()).getJsonArray("noeuds"));
-				jsonResult.put("cheminements",  ((JsonObject)result.result()).getJsonArray("cheminements"));
-				jsonResult.put("pointsTech",  ((JsonObject)result.result()).getJsonArray("pointsTech"));
-				jsonResult.put("sitesTech",  ((JsonObject)result.result()).getJsonArray("sitesTech"));
-				jsonResult.put("adresses",  ((JsonObject)result.result()).getJsonArray("adresses"));
-				jsonResult.put("ebps",  ((JsonObject)result.result()).getJsonArray("ebps"));
-				routingContext.response().end(Json.encode(jsonResult));
-			}else {
-				routingContext.fail(result.cause());
-			}
+		Observable.empty().flatMap(empty -> {
+			shapeEngine.process(pathNoeud,pathCheminement, 0);
+			return dbEngine.firstStep(shapeEngine.getFinalList()).toObservable();
+		}).subscribe( json -> {
+			routingContext.response().putHeader(HttpHeaders.CONTENT_TYPE.toString(),HttpHeaderValues.APPLICATION_JSON.toString());
+			JsonObject jsonResult = new JsonObject();
+			jsonResult.put("map", shapeEngine.transformToGpsCoordinnate());
+			jsonResult.put("noeuds", ((JsonObject)json).getJsonArray("noeuds"));
+			jsonResult.put("cheminements",  ((JsonObject)json).getJsonArray("cheminements"));
+			jsonResult.put("pointsTech",  ((JsonObject)json).getJsonArray("pointsTech"));
+			jsonResult.put("sitesTech",  ((JsonObject)json).getJsonArray("sitesTech"));
+			jsonResult.put("adresses",  ((JsonObject)json).getJsonArray("adresses"));
+			jsonResult.put("ebps",  ((JsonObject)json).getJsonArray("ebps"));
+			routingContext.response().end(Json.encode(jsonResult));
+		} , error -> {
+			routingContext.fail((Throwable) error);
 		});
-
-
 	}
 	private void secondStep(RoutingContext routingContext) {
 		JsonObject payload = routingContext.getBodyAsJson();
 		JsonObject shapeEngineConfig = sessions.get(payload.getString("token"));
 		GenEngine dbEngine = new GenEngine();
-		dbEngine.secondStep(payload.getJsonObject("data"), x -> {
-			if(x.succeeded()){
-				routingContext.response().putHeader(HttpHeaders.CONTENT_TYPE,HttpHeaderValues.APPLICATION_JSON);
+		dbEngine.secondStep(payload.getJsonObject("data")).flatMap( x -> {
+				routingContext.response().putHeader(HttpHeaders.CONTENT_TYPE.toString(),HttpHeaderValues.APPLICATION_JSON.toString());
 				JsonObject jsonResult = new JsonObject();
-				jsonResult.put("conduites",x.result().getJsonArray("conduites"));
-				jsonResult.put("cond_chems",x.result().getJsonArray("cond_chems"));
-				jsonResult.put("cables",x.result().getJsonArray("cables"));
-				jsonResult.put("cablelines",x.result().getJsonArray("cablelines"));
-				jsonResult.put("cabconds",x.result().getJsonArray("cabconds"));
-				routingContext.response().end(Json.encode(jsonResult));
-			}else {
-				routingContext.fail(x.cause());
-			}
-		});
+				jsonResult.put("conduites",x.getJsonArray("conduites"));
+				jsonResult.put("cond_chems",x.getJsonArray("cond_chems"));
+				jsonResult.put("cables",x.getJsonArray("cables"));
+				jsonResult.put("cablelines",x.getJsonArray("cablelines"));
+				jsonResult.put("cabconds",x.getJsonArray("cabconds"));
+				return Single.just(jsonResult);
+		}).subscribe(json -> {
+			routingContext.response().end(Json.encode(json));
+		}, error -> routingContext.fail(error));
 
 	}
 
 	private void writeShapesList(RoutingContext ctx, AsyncResult<List<String>> read) {
 		if(read.succeeded()){
-			ctx.response().putHeader(HttpHeaders.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON);
+			ctx.response().putHeader(HttpHeaders.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_JSON.toString());
 			ArrayList<String> list = new ArrayList<>();
 			for (String s : read.result()) {
 				String[] split = s.split("\\"+File.separator);

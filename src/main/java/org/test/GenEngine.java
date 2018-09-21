@@ -1,10 +1,8 @@
 package org.test;
 
 import com.vividsolutions.jts.geom.*;
-import com.vividsolutions.jts.io.ParseException;
-import com.vividsolutions.jts.io.WKTReader;
 import com.vividsolutions.jts.io.WKTWriter;
-import com.vividsolutions.jts.operation.linemerge.LineMerger;
+import io.reactivex.Single;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -13,9 +11,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-import io.vertx.ext.sql.SQLClient;
 import org.geotools.geometry.jts.JTS;
-import org.geotools.geometry.jts.JTSFactoryFinder;
 import org.geotools.referencing.CRS;
 import org.opengis.referencing.FactoryException;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
@@ -41,23 +37,20 @@ public class GenEngine {
 
 	public GenEngine() {}
 
-	public void firstStep(List<Object> objects, Handler<AsyncResult<JsonObject>> handler) {
-		Future<JsonObject> f = Future.future();
-		f.setHandler(handler);
+	public Single firstStep(List<Object> objects) {
 	    AtomicInteger i = new AtomicInteger(0);
 		codes = new HashMap<>();
 
-		process(objects, f, i);
+		return process(objects, i);
 
 
 	}
 
-	private void process(List<Object> objects, Future<JsonObject> f, AtomicInteger i) {
-		processNext(objects, i.get(), x -> {
-			if(x.succeeded()){
+	private Single process(List<Object> objects, AtomicInteger i) {
+		return processNext(objects, i.get()).flatMap( x -> {
 				i.addAndGet(1);
 				if(i.get()<objects.size()) {
-					process(objects, f, i);
+					return  process(objects, i);
 				}else {
 					JsonArray noeuds = new JsonArray();
 					JsonArray cheminements = new JsonArray();
@@ -113,33 +106,26 @@ public class GenEngine {
 					dataFill.put("sitesTech", siteTechs);
 					dataFill.put("adresses", adresses);
 					dataFill.put("ebps", ebps);
-					f.complete(dataFill);
+					return Single.just(dataFill);
 				}
-			}else {
-				f.fail(x.cause());
-			}
 		});
 	}
 
-	private void processNext(List<Object> objects, Integer i, Handler<AsyncResult<Void>> resultHandler) {
-		Future f = Future.future();
-		f.setHandler(resultHandler);
+	private Single<Boolean> processNext(List<Object> objects, Integer i) {
 		Object current = objects.get(i);
 		if (current instanceof Noeud) {
-			getCodeNoeud(current, x -> {
-				if(x.succeeded()){
+			return getCodeNoeud(current).flatMap( x -> {
 					if(nroSroChanged) {
 						((Noeud) current).setCode(codes.get("noeud"));
 					}else {
 						((Noeud) current).setCode(getAndIncreaseCode("noeud"));
 					}
-					f.complete();
-				}
+				return Single.just(true);
 			});
 		} else {
-			getCodeCheminement(x -> {
+			return getCodeCheminement().flatMap(x -> {
 				((Cheminement) current).setCode(codes.get("cheminement"));
-				f.complete();
+				return Single.just(true);
 			});
 		}
 	}
@@ -378,9 +364,7 @@ public class GenEngine {
 //		}
 //	}
 
-	private void getCodeCheminement(Handler<AsyncResult<String>> resultHandler) {
-		Future<String> future = Future.future();
-		future.setHandler(resultHandler);
+	private Single<String> getCodeCheminement() {
 		if(nroSroChanged) {
 			nroSroChanged = false;
 			String codeStart = codes.get("noeud").replace("ND", "CM");
@@ -388,155 +372,101 @@ public class GenEngine {
 			String table = "data.t_cheminement";
 			String field = "cm_code";
 			String codeKey = "cheminement";
-			nextCode(future, codeStart, table, field, codeKey);
+			return nextCode( codeStart, table, field, codeKey);
 		}else {
-			future.complete(getAndIncreaseCode("cheminement"));
+			return Single.just(getAndIncreaseCode("cheminement"));
 		}
 	}
 
-	private void getCodeNoeud(Object object, Handler<AsyncResult<Void>> resultHandler) {
-		Future f = Future.future();
-		f.setHandler(resultHandler);
+	private Single getCodeNoeud(Object object) {
 		Noeud firstNoeud = (Noeud) object;
 		WKTWriter wktWriter = new WKTWriter();
 		Geometry geometry = (Geometry) firstNoeud.getFeature().getDefaultGeometry();
 		String geomString = wktWriter.write(geometry);
-		getZnro(geomString, codeRno -> {
-			if (codeRno.succeeded()) {
-				getZsro(geomString, codeRno.result(), codeSro -> {
-					if (codeSro.succeeded()) {
-						if(currentNroSro.equals(codeSro.result())){
+		return getZnro(geomString).flatMap(codeRno -> {
+				return getZsro(geomString, codeRno).flatMap( code -> {
+						if(currentNroSro.equals(code)){
 							nroSroChanged =false;
-							f.complete();
+							return Single.just(code);
 						}else {
-							currentNroSro = codeSro.result();
+							currentNroSro = code;
 							nroSroChanged =true;
 							String table = "data.t_noeud";
 							String field = "nd_code";
 							String codeKey = "noeud";
-							nextCode(f, currentNroSro, table, field, codeKey);
+							return nextCode( currentNroSro, table, field, codeKey);
 						}
-					} else {
-						logger.error(codeSro.cause());
-						f.fail(codeSro.cause());
-					}
 				});
-			} else {
-				logger.error(codeRno.cause());
-				f.fail(codeRno.cause());
-			}
 		});
 	}
 
-	public static void nextCode(Future f, String codeSro, String table, String field, String codeKey) {
+	public static Single nextCode( String codeSro, String table, String field, String codeKey) {
 		if(codes.containsKey(codeKey)){
 			Integer num = Integer.parseInt(codes.get(codeKey).substring(9)) + 10;
 			String code = codeSro + num;
 			String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code + "%' ORDER BY " + field + " DESC";
-			App.postgreSQLClient.getConnection(connection -> {
-				if (connection.succeeded()) {
-					connection.result().query(query, queryResult -> {
-						if(queryResult.succeeded()){
-							if(queryResult.result().getRows().size() > 0){
-								getAndPutNumero(f, codeSro, table, field, codeKey);
-							}else {
-								codes.put(codeKey, code);
-								f.complete(code);
-							}
-						}else {
-							f.fail(queryResult.cause());
-						}
-						connection.result().close();
-					});
-				}else {
-					f.fail(connection.cause());
-				}
+			return App.postgreSQLClient.rxGetConnection().flatMap(connection -> {
+				return connection.rxQuery(query).flatMap(queryResult -> {
+					if (queryResult.getRows().size() > 0) {
+						return getAndPutNumero(codeSro, table, field, codeKey);
+					} else {
+						codes.put(codeKey, code);
+						return Single.just(code);
+					}
+				}).doFinally(() -> connection.close());
 			});
 		}else {
-			getAndPutNumero(f, codeSro, table, field, codeKey);
+			return getAndPutNumero( codeSro, table, field, codeKey);
 		}
 	}
 
-	public static void getAndPutNumero(Future f, String codeSro, String table, String field, String codeKey) {
-		getNumero(codeSro, table, field, codeFinal -> {
-			if (codeFinal.succeeded()) {
-				codes.put(codeKey, codeFinal.result());
-				f.complete(codeFinal.result());
-			} else {
-				logger.error(codeFinal.cause());
-				f.fail(codeFinal.cause());
-			}
+	public static Single getAndPutNumero(String codeSro, String table, String field, String codeKey) {
+		return getNumero(codeSro, table, field).flatMap( codeFinal -> {
+				codes.put(codeKey, codeFinal);
+				return Single.just(codeFinal);
 		});
 	}
 
-	private void getZnro(String geomString, Handler<AsyncResult<String>> resultHandler) {
+	private Single<String> getZnro(String geomString) {
 		String codeStart = "ND";
-		Future<String> future = Future.future();
-		future.setHandler(resultHandler);
-		App.postgreSQLClient.getConnection(connection -> {
+		return App.postgreSQLClient.rxGetConnection().flatMap(connection -> {
 			String queryznro = "SELECT * FROM public.znro WHERE  ST_Contains(geom,ST_GeomFromText('" + geomString + "',2154)) ='t';";
-			connection.result().query(queryznro, znroResult -> {
-				if (znroResult.succeeded()) {
+			return connection.rxQuery(queryznro).flatMap( znroResult -> {
 					String code = codeStart;
-					List<JsonObject> znroResults = znroResult.result().getRows();
-					if (znroResults.size() > 1) {
-						System.out.println("Bizarre match plusieurs znro");
-					}
-					if (znroResults.size() > 0) {
+					List<JsonObject> znroResults = znroResult.getRows();
+					if (znroResults.size() == 1) {
 						JsonObject row = znroResults.get(0);
 						code = code.concat(row.getString("code_nro").substring(2, 4));// departement
 						code = code.concat(row.getString("code_chiff"));
-						connection.result().close();
-						future.complete(code);
+						return Single.just(code);
 					}
-				} else {
-					connection.result().close();
-					future.fail(znroResult.cause());
-				}
+					throw new IllegalStateException("Probleme pour trouver les znro, znro trouvé "+ znroResult.getRows().size());
 			});
 		});
 	}
 
-	private void getZsro(String geomString, String codeStart, Handler<AsyncResult<String>> resultHandler) {
-		Future<String> future = Future.future();
-		future.setHandler(resultHandler);
+	private Single<String> getZsro(String geomString, String codeStart) {
 		String queryzsro = "SELECT * FROM public.zsro WHERE  ST_Contains(geom,ST_GeomFromText('" + geomString + "',2154)) ='t';";
-		App.postgreSQLClient.getConnection(connection -> {
-			if (connection.succeeded()) {
-				connection.result().query(queryzsro, zsroResult -> {
-					if (zsroResult.succeeded()) {
+		return App.postgreSQLClient.rxGetConnection().flatMap(connection -> {
+				 return connection.rxQuery(queryzsro).flatMap(zsroResult -> {
 						String code = codeStart;
-						List<JsonObject> zsroResults = zsroResult.result().getRows();
-						if (zsroResults.size() > 1) {
-							System.out.println("Bizarre match plusieurs znro");
-						}
-						if (zsroResults.size() > 0) {
+						List<JsonObject> zsroResults = zsroResult.getRows();
+						if (zsroResults.size() == 1) {
 							JsonObject rowZsro = zsroResults.get(0);
 							code = code.concat(rowZsro.getString("code_sro").substring(9));
-							connection.result().close();
-							future.complete(code);
+							return Single.just(code);
 						}
-					} else {
-						connection.result().close();
-						future.fail(zsroResult.cause());
-					}
-				});
-			} else {
-				future.fail(connection.cause());
-			}
+					 throw new IllegalStateException("Probleme pour trouver les zsro, zsro trouvé "+ zsroResult.getRows().size());
+				}).doFinally(() -> connection.close());
 		});
 	}
 
-	public static void getNumero(String codeStart, String table, String field, Handler<AsyncResult<String>> resultHandler) {
+	public static Single<String> getNumero(String codeStart, String table, String field) {
 		final String[] code = {codeStart + "7"};
-		Future<String> future = Future.future();
-		future.setHandler(resultHandler);
 		String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code[0] + "%' ORDER BY " + field + " DESC";
-		App.postgreSQLClient.getConnection(connection -> {
-			if (connection.succeeded()) {
-				connection.result().query(query, queryResult -> {
-					if (queryResult.succeeded()) {
-						List<JsonObject> rows = queryResult.result().getRows();
+		return App.postgreSQLClient.rxGetConnection().flatMap(connection -> {
+				return connection.rxQuery(query).flatMap( queryResult -> {
+						List<JsonObject> rows = queryResult.getRows();
 						if (rows.size() > 0) {
 							JsonObject rowZsro = rows.get(0);
 							int nd_codeEnd = Integer.parseInt(rowZsro.getString(field).substring(10));
@@ -547,26 +477,15 @@ public class GenEngine {
 							}
 							code[0] = code[0].concat(codeEnd);
 
-							connection.result().close();
-							future.complete(code[0]);
+							return Single.just(code[0]);
 						} else {
-							connection.result().close();
-							future.complete(code[0] + "0010");
+							return Single.just(code[0] + "0010");
 						}
-					} else {
-						connection.result().close();
-						future.fail(queryResult.cause());
-					}
-				});
-			} else {
-				future.fail(connection.cause());
-			}
+				}).doFinally(() -> connection.close());
 		});
 	}
 
-	public void secondStep(JsonObject data, Handler<AsyncResult<JsonObject>> handler) {
-		Future<JsonObject> future = Future.future();
-		future.setHandler(handler);
+	public Single<JsonObject> secondStep(JsonObject data) {
 		for (Object o : data.getJsonArray("noeuds")) {
 			TNoeud tNoeud = Json.decodeValue(Json.encode(o), TNoeud.class);
 			tNoeudMap.put(tNoeud.getNd_code(), tNoeud);
@@ -606,17 +525,15 @@ public class GenEngine {
 
 		}
 		CableGen cableGen = new CableGen(data);
-		Future<JsonObject> f = Future.future();
-		f.setHandler( x -> {
+		return cableGen.process(0).flatMap( x -> {
 			JsonObject result = new JsonObject();
 			result.put("conduites", conduites);
 			result.put("cond_chems", cond_chems);
-			result.put("cables", x.result().getJsonArray("cables"));
-			result.put("cablelines",  x.result().getJsonArray("cablelines"));
-			result.put("cabconds",  x.result().getJsonArray("cabconds"));
-			future.complete(result);
+			result.put("cables", x.getJsonArray("cables"));
+			result.put("cablelines",  x.getJsonArray("cablelines"));
+			result.put("cabconds",  x.getJsonArray("cabconds"));
+			return Single.just(result);
 		});
-		cableGen.process(0, f );
 
 	}
 

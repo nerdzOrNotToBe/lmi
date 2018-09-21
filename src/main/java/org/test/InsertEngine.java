@@ -7,7 +7,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-import io.vertx.ext.sql.SQLClient;
+import io.vertx.reactivex.ext.sql.SQLClient;
 
 import java.text.NumberFormat;
 import java.text.ParseException;
