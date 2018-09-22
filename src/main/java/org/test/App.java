@@ -3,6 +3,7 @@ package org.test;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.reactivex.Observable;
 import io.reactivex.Single;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
@@ -152,7 +153,7 @@ public class App extends AbstractVerticle {
 		shapeEngineConfig.put("pathNoeud",pathNoeud);
 		shapeEngineConfig.put("pathCheminement",pathCheminement);
 		sessions.put(payload.getString("token"),shapeEngineConfig);
-		Observable.empty().flatMap(empty -> {
+		Observable.just(true).observeOn(Schedulers.single()).subscribeOn(Schedulers.single()).flatMap(empty -> {
 			shapeEngine.process(pathNoeud,pathCheminement, 0);
 			return dbEngine.firstStep(shapeEngine.getFinalList()).toObservable();
 		}).subscribe( json -> {

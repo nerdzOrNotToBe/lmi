@@ -2,10 +2,9 @@ package org.test;
 
 import com.vividsolutions.jts.geom.*;
 import com.vividsolutions.jts.io.WKTWriter;
+import io.reactivex.Observable;
 import io.reactivex.Single;
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -20,99 +19,156 @@ import org.test.models.*;
 
 import java.text.DecimalFormat;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class GenEngine {
 	private static Logger logger = LoggerFactory.getLogger(GenEngine.class);
 
 
 	private static Map<String, String> codes = new HashMap<>();
+	private static DecimalFormat df2 = new DecimalFormat(".##");
 	private Map<String, TNoeud> tNoeudMap = new HashMap<>();
 	private Map<String, TPtech> tPtMap = new HashMap<>();
 	private Map<String, TSitetech> sitetechMap = new HashMap<>();
-	private static DecimalFormat df2 = new DecimalFormat(".##");
 	private JsonObject dataFill = new JsonObject();
 	private String currentNroSro = "";
 	private Boolean nroSroChanged = false;
+	private static ExecutorService threadPool = Executors.newFixedThreadPool(20);
 
 	public GenEngine() {}
 
-	public Single firstStep(List<Object> objects) {
-	    AtomicInteger i = new AtomicInteger(0);
-		codes = new HashMap<>();
-
-		return process(objects, i);
-
-
+	public static String getAndIncreaseCode(String currentCode) {
+		String root = codes.get(currentCode).substring(0, 9);
+		Integer number = Integer.valueOf(codes.get(currentCode).substring(9));
+		number += 10;
+		codes.put(currentCode, root + number);
+		return  root + number;
 	}
 
-	private Single process(List<Object> objects, AtomicInteger i) {
-		return processNext(objects, i.get()).flatMap( x -> {
-				i.addAndGet(1);
-				if(i.get()<objects.size()) {
-					return  process(objects, i);
-				}else {
-					JsonArray noeuds = new JsonArray();
-					JsonArray cheminements = new JsonArray();
-					JsonArray pts = new JsonArray();
-					JsonArray siteTechs = new JsonArray();
-					JsonArray adresses = new JsonArray();
-					JsonArray ebps = new JsonArray();
-					try {
-						for (Object object : objects) {
-							if (object instanceof Noeud) {
-								Noeud noeud = (Noeud) object;
-								TNoeud tNoeud = createNoeud(noeud);
-								if ("ST".equals(tNoeud.getNd_type())) {
-									TSitetech siteTech = createSiteTech(tNoeud, noeud, noeuds, pts);
-									siteTechs.add(JsonObject.mapFrom(siteTech));
-									TAdresse tAdresse = createAdresse(tNoeud, noeud, noeuds);
-									adresses.add(JsonObject.mapFrom(tAdresse));
-									// to calculate t_cable and t_cableline
-									tNoeud.setPointBranchement(true);
-								} else {
-									TPtech pointTech = createPointTech(tNoeud, noeud, noeuds, pts);
-									pts.add(JsonObject.mapFrom(pointTech));
-									TEbp tEbp = createEbp(tNoeud, noeud, noeuds, pointTech);
-									if (noeud.getFeature().getProperty("BPE") != null && noeud.getFeature().getProperty("BPE").getValue() != null && !((String) noeud.getFeature().getProperty("BPE").getValue()).isEmpty()) {
-										ebps.add(JsonObject.mapFrom(tEbp));
-										// to calculate t_cable and t_cableline
-										tNoeud.setPointBranchement(true);
-									}
-									if (noeud.getFeature().getProperty("BPE1") != null && noeud.getFeature().getProperty("BPE1").getValue() != null && !((String) noeud.getFeature().getProperty("BPE1").getValue()).isEmpty()) {
-										ebps.add(JsonObject.mapFrom(tEbp));
-										// to calculate t_cable and t_cableline
-										tNoeud.setPointBranchement(true);
-									}
-									if (noeud.getFeature().getProperty("BPE2") != null && noeud.getFeature().getProperty("BPE2").getValue() != null && !((String) noeud.getFeature().getProperty("BPE2").getValue()).isEmpty()) {
-										TEbp tEbp1 = createEbp1(tNoeud, noeud, noeuds, pointTech);
-										ebps.add(JsonObject.mapFrom(tEbp1));
-										// to calculate t_cable and t_cableline
-										tNoeud.setPointBranchement(true);
-									}
-								}
-								noeuds.add(JsonObject.mapFrom(tNoeud));
-							} else {
-								TCheminement tCheminement = createCheminement((Cheminement) object);
-								cheminements.add(JsonObject.mapFrom(tCheminement));
-							}
-						}
-					}catch (Exception e){
-						logger.error(e);
+	public static Single nextCode( String codeSro, String table, String field, String codeKey) {
+		if(codes.containsKey(codeKey)){
+			Integer num = Integer.parseInt(codes.get(codeKey).substring(9)) + 10;
+			String code = codeSro + num;
+			String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code + "%' ORDER BY " + field + " DESC";
+			CompletableFuture <String> completableFuture = new CompletableFuture<>();
+			App.postgreSQLClient.rxGetConnection().observeOn(Schedulers.from(threadPool)).subscribeOn(Schedulers.from(threadPool)).flatMap(connection -> {
+				return connection.rxQuery(query).flatMap(queryResult -> {
+					if (queryResult.getRows().size() > 0) {
+						return getAndPutNumero(codeSro, table, field, codeKey);
+					} else {
+						codes.put(codeKey, code);
+						return Single.just(code);
 					}
-					dataFill.put("cheminements", cheminements);
-					dataFill.put("noeuds", noeuds);
-					dataFill.put("pointsTech", pts);
-					dataFill.put("sitesTech", siteTechs);
-					dataFill.put("adresses", adresses);
-					dataFill.put("ebps", ebps);
-					return Single.just(dataFill);
-				}
+				}).doFinally(() -> connection.close());
+			}).subscribe(success -> completableFuture.complete(success), error -> completableFuture.completeExceptionally(error) );
+			return Single.fromFuture(completableFuture);
+		}else {
+			return getAndPutNumero( codeSro, table, field, codeKey);
+		}
+	}
+
+	public static Single<String> getAndPutNumero(String codeSro, String table, String field, String codeKey) {
+		return getNumero(codeSro, table, field).flatMap( codeFinal -> {
+				codes.put(codeKey, codeFinal);
+				return Single.just(codeFinal);
 		});
 	}
 
-	private Single<Boolean> processNext(List<Object> objects, Integer i) {
-		Object current = objects.get(i);
+	public static Single<String> getNumero(String codeStart, String table, String field) {
+		final String[] code = {codeStart + "7"};
+		String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code[0] + "%' ORDER BY " + field + " DESC";
+		CompletableFuture <String> completableFuture = new CompletableFuture<>();
+		App.postgreSQLClient.rxGetConnection().observeOn(Schedulers.from(threadPool)).subscribeOn(Schedulers.from(threadPool)).flatMap(connection -> {
+				return connection.rxQuery(query).flatMap( queryResult -> {
+						List<JsonObject> rows = queryResult.getRows();
+						if (rows.size() > 0) {
+							JsonObject rowZsro = rows.get(0);
+							int nd_codeEnd = Integer.parseInt(rowZsro.getString(field).substring(10));
+							nd_codeEnd = nd_codeEnd + 100;
+							String codeEnd = String.valueOf(nd_codeEnd);
+							if (nd_codeEnd < 1000){
+								codeEnd = "0" + codeEnd;
+							}
+							code[0] = code[0].concat(codeEnd);
+
+							return Single.just(code[0]);
+						} else {
+							return Single.just(code[0] + "0010");
+						}
+				}).doFinally(() -> connection.close());
+		}).subscribe(success -> completableFuture.complete(success), error -> completableFuture.completeExceptionally(error) );
+		return Single.fromFuture(completableFuture);
+	}
+
+	public Single firstStep(List<Object> objects) {
+		codes = new HashMap<>();
+
+		return process(objects);
+
+
+	}
+
+	private Single process(List<Object> objects) {
+		 return  Observable.fromIterable(objects).observeOn(Schedulers.from(threadPool)).subscribeOn(Schedulers.from(threadPool)).flatMap(o -> processNext(o), 1).toList().flatMap(aBoolean -> {
+			JsonArray noeuds = new JsonArray();
+			JsonArray cheminements = new JsonArray();
+			JsonArray pts = new JsonArray();
+			JsonArray siteTechs = new JsonArray();
+			JsonArray adresses = new JsonArray();
+			JsonArray ebps = new JsonArray();
+			for (Object object : objects) {
+				if (object instanceof Noeud) {
+					Noeud noeud = (Noeud) object;
+					TNoeud tNoeud = createNoeud(noeud);
+					if ("ST".equals(tNoeud.getNd_type())) {
+						TSitetech siteTech = createSiteTech(tNoeud, noeud, noeuds, pts);
+						siteTechs.add(JsonObject.mapFrom(siteTech));
+						TAdresse tAdresse = createAdresse(tNoeud, noeud, noeuds);
+						adresses.add(JsonObject.mapFrom(tAdresse));
+						// to calculate t_cable and t_cableline
+						tNoeud.setPointBranchement(true);
+					} else {
+						TPtech pointTech = createPointTech(tNoeud, noeud, noeuds, pts);
+						pts.add(JsonObject.mapFrom(pointTech));
+						TEbp tEbp = createEbp(tNoeud, noeud, noeuds, pointTech);
+						if (noeud.getFeature().getProperty("BPE") != null && noeud.getFeature().getProperty("BPE").getValue() != null && !((String) noeud.getFeature().getProperty("BPE").getValue()).isEmpty()) {
+							ebps.add(JsonObject.mapFrom(tEbp));
+							// to calculate t_cable and t_cableline
+							tNoeud.setPointBranchement(true);
+						}
+						if (noeud.getFeature().getProperty("BPE1") != null && noeud.getFeature().getProperty("BPE1").getValue() != null && !((String) noeud.getFeature().getProperty("BPE1").getValue()).isEmpty()) {
+							ebps.add(JsonObject.mapFrom(tEbp));
+							// to calculate t_cable and t_cableline
+							tNoeud.setPointBranchement(true);
+						}
+						if (noeud.getFeature().getProperty("BPE2") != null && noeud.getFeature().getProperty("BPE2").getValue() != null && !((String) noeud.getFeature().getProperty("BPE2").getValue()).isEmpty()) {
+							TEbp tEbp1 = createEbp1(tNoeud, noeud, noeuds, pointTech);
+							ebps.add(JsonObject.mapFrom(tEbp1));
+							// to calculate t_cable and t_cableline
+							tNoeud.setPointBranchement(true);
+						}
+					}
+					noeuds.add(JsonObject.mapFrom(tNoeud));
+				} else {
+					TCheminement tCheminement = createCheminement((Cheminement) object);
+					cheminements.add(JsonObject.mapFrom(tCheminement));
+				}
+			}
+			dataFill.put("cheminements", cheminements);
+			dataFill.put("noeuds", noeuds);
+			dataFill.put("pointsTech", pts);
+			dataFill.put("sitesTech", siteTechs);
+			dataFill.put("adresses", adresses);
+			dataFill.put("ebps", ebps);
+			return Single.just(dataFill);
+		});
+	}
+
+	private Observable<Boolean> processNext(Object current) {
+		System.out.println("processNext start");
 		if (current instanceof Noeud) {
 			return getCodeNoeud(current).flatMap( x -> {
 					if(nroSroChanged) {
@@ -120,13 +176,16 @@ public class GenEngine {
 					}else {
 						((Noeud) current).setCode(getAndIncreaseCode("noeud"));
 					}
+				System.out.println("processNext end");
+
 				return Single.just(true);
-			});
+			}).toObservable();
 		} else {
 			return getCodeCheminement().flatMap(x -> {
 				((Cheminement) current).setCode(codes.get("cheminement"));
+				System.out.println("processNext end");
 				return Single.just(true);
-			});
+			}).toObservable();
 		}
 	}
 
@@ -217,6 +276,25 @@ public class GenEngine {
 		}
 		return tSitetech;
 	}
+
+//	private void getCodeCable(Handler<AsyncResult<String>> resultHandler) {
+//		Future<String> future = Future.future();
+//		future.setHandler(resultHandler);
+//		if(nroSroChanged) {
+//
+//			String codeStart = codes.get("noeud").replace("ND", "CB");
+//			codeStart = codeStart.substring(0, 9);
+//			getNumero(codeStart, "data.t_cable", "cb_code", numeroResult -> {
+//				if (numeroResult.succeeded()) {
+//					future.complete(numeroResult.result());
+//				} else {
+//					future.fail(numeroResult.cause());
+//				}
+//			});
+//		}else {
+//			future.complete(getAndIncreaseCode("cable"));
+//		}
+//	}
 
 	private TPtech createPointTech(TNoeud tnoeud, Noeud noeud, JsonArray noeuds, JsonArray pts) {
 		TPtech tPtech = new TPtech();
@@ -336,35 +414,8 @@ public class GenEngine {
 		return tNoeud;
 	}
 
-	public static String getAndIncreaseCode(String currentCode) {
-		String value = String.valueOf(codes.get(currentCode));
-		String root = codes.get(currentCode).substring(0, 9);
-		Integer number = Integer.valueOf(codes.get(currentCode).substring(9));
-		number += 10;
-		codes.put(currentCode, root + number);
-		return  root + number;
-	}
-
-//	private void getCodeCable(Handler<AsyncResult<String>> resultHandler) {
-//		Future<String> future = Future.future();
-//		future.setHandler(resultHandler);
-//		if(nroSroChanged) {
-//
-//			String codeStart = codes.get("noeud").replace("ND", "CB");
-//			codeStart = codeStart.substring(0, 9);
-//			getNumero(codeStart, "data.t_cable", "cb_code", numeroResult -> {
-//				if (numeroResult.succeeded()) {
-//					future.complete(numeroResult.result());
-//				} else {
-//					future.fail(numeroResult.cause());
-//				}
-//			});
-//		}else {
-//			future.complete(getAndIncreaseCode("cable"));
-//		}
-//	}
-
 	private Single<String> getCodeCheminement() {
+		logger.info("start");
 		if(nroSroChanged) {
 			nroSroChanged = false;
 			String codeStart = codes.get("noeud").replace("ND", "CM");
@@ -372,8 +423,10 @@ public class GenEngine {
 			String table = "data.t_cheminement";
 			String field = "cm_code";
 			String codeKey = "cheminement";
+			logger.info("end");
 			return nextCode( codeStart, table, field, codeKey);
 		}else {
+			logger.info("end");
 			return Single.just(getAndIncreaseCode("cheminement"));
 		}
 	}
@@ -400,36 +453,10 @@ public class GenEngine {
 		});
 	}
 
-	public static Single nextCode( String codeSro, String table, String field, String codeKey) {
-		if(codes.containsKey(codeKey)){
-			Integer num = Integer.parseInt(codes.get(codeKey).substring(9)) + 10;
-			String code = codeSro + num;
-			String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code + "%' ORDER BY " + field + " DESC";
-			return App.postgreSQLClient.rxGetConnection().flatMap(connection -> {
-				return connection.rxQuery(query).flatMap(queryResult -> {
-					if (queryResult.getRows().size() > 0) {
-						return getAndPutNumero(codeSro, table, field, codeKey);
-					} else {
-						codes.put(codeKey, code);
-						return Single.just(code);
-					}
-				}).doFinally(() -> connection.close());
-			});
-		}else {
-			return getAndPutNumero( codeSro, table, field, codeKey);
-		}
-	}
-
-	public static Single getAndPutNumero(String codeSro, String table, String field, String codeKey) {
-		return getNumero(codeSro, table, field).flatMap( codeFinal -> {
-				codes.put(codeKey, codeFinal);
-				return Single.just(codeFinal);
-		});
-	}
-
 	private Single<String> getZnro(String geomString) {
 		String codeStart = "ND";
-		return App.postgreSQLClient.rxGetConnection().flatMap(connection -> {
+		CompletableFuture <String> completableFuture = new CompletableFuture<>();
+		App.postgreSQLClient.rxGetConnection().observeOn(Schedulers.from(threadPool)).subscribeOn(Schedulers.from(threadPool)).flatMap(connection -> {
 			String queryznro = "SELECT * FROM public.znro WHERE  ST_Contains(geom,ST_GeomFromText('" + geomString + "',2154)) ='t';";
 			return connection.rxQuery(queryznro).flatMap( znroResult -> {
 					String code = codeStart;
@@ -441,14 +468,16 @@ public class GenEngine {
 						return Single.just(code);
 					}
 					throw new IllegalStateException("Probleme pour trouver les znro, znro trouvé "+ znroResult.getRows().size());
-			});
-		});
+			}).doFinally(() -> connection.close());
+		}).subscribe(code -> completableFuture.complete(code), error -> completableFuture.completeExceptionally(error));
+		return Single.fromFuture(completableFuture);
 	}
 
 	private Single<String> getZsro(String geomString, String codeStart) {
 		String queryzsro = "SELECT * FROM public.zsro WHERE  ST_Contains(geom,ST_GeomFromText('" + geomString + "',2154)) ='t';";
-		return App.postgreSQLClient.rxGetConnection().flatMap(connection -> {
-				 return connection.rxQuery(queryzsro).flatMap(zsroResult -> {
+		CompletableFuture <String> completableFuture = new CompletableFuture<>();
+		App.postgreSQLClient.rxGetConnection().observeOn(Schedulers.from(threadPool)).subscribeOn(Schedulers.from(threadPool)).flatMap(connection -> {
+				 return connection.rxQuery(queryzsro).observeOn(Schedulers.from(threadPool)).subscribeOn(Schedulers.from(threadPool)).flatMap(zsroResult -> {
 						String code = codeStart;
 						List<JsonObject> zsroResults = zsroResult.getRows();
 						if (zsroResults.size() == 1) {
@@ -458,31 +487,8 @@ public class GenEngine {
 						}
 					 throw new IllegalStateException("Probleme pour trouver les zsro, zsro trouvé "+ zsroResult.getRows().size());
 				}).doFinally(() -> connection.close());
-		});
-	}
-
-	public static Single<String> getNumero(String codeStart, String table, String field) {
-		final String[] code = {codeStart + "7"};
-		String query = "SELECT * FROM " + table + " WHERE " + field + " LIKE '" + code[0] + "%' ORDER BY " + field + " DESC";
-		return App.postgreSQLClient.rxGetConnection().flatMap(connection -> {
-				return connection.rxQuery(query).flatMap( queryResult -> {
-						List<JsonObject> rows = queryResult.getRows();
-						if (rows.size() > 0) {
-							JsonObject rowZsro = rows.get(0);
-							int nd_codeEnd = Integer.parseInt(rowZsro.getString(field).substring(10));
-							nd_codeEnd = nd_codeEnd + 100;
-							String codeEnd = String.valueOf(nd_codeEnd);
-							if (nd_codeEnd < 1000){
-								codeEnd = "0" + codeEnd;
-							}
-							code[0] = code[0].concat(codeEnd);
-
-							return Single.just(code[0]);
-						} else {
-							return Single.just(code[0] + "0010");
-						}
-				}).doFinally(() -> connection.close());
-		});
+		}).subscribe(code -> completableFuture.complete(code), error -> completableFuture.completeExceptionally(error));
+		return Single.fromFuture(completableFuture);
 	}
 
 	public Single<JsonObject> secondStep(JsonObject data) {
