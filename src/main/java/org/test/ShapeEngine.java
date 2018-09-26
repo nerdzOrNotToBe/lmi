@@ -242,7 +242,7 @@ public class ShapeEngine implements Serializable {
 				JsonObject noeud = new JsonObject();
 				noeud.put("lat", destDirectPosition2D.x);
 				noeud.put("lng", destDirectPosition2D.y);
-				noeud.put("id", noeudMap.get(defaultGeometry).getCode());
+				noeud.put("id", noeudMap.get(defaultGeometry).getCode() + " - " +  noeudMap.get(defaultGeometry).getFeature().getID());
 				noeuds.add(noeud);
 			}
 			JsonArray cheminements = new JsonArray();
@@ -264,7 +264,7 @@ public class ShapeEngine implements Serializable {
 				}
 				JsonObject cheminement = new JsonObject();
 				cheminement.put("coordinnates", coordinnates);
-				cheminement.put("id", cheminenementMap.get(defaultGeometry).getCode());
+				cheminement.put("id", cheminenementMap.get(defaultGeometry).getCode() + " - " + cheminenementMap.get(defaultGeometry).getFeature().getID() );
 				cheminements.add(cheminement);
 			}
 		} catch (FactoryException e) {

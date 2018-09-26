@@ -226,6 +226,7 @@ public class CableGen {
 		cable.setCb_statut("PRO");
 		cable.setCb_tech("OPT");
 		cable.setCb_typephy("C");
+		cable.setCb_modulo(12L);
 	}
 
 	private Single<JsonObject> setCodeCable(int i, TNoeud noeud) {
